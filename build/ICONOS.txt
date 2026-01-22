@@ -1,0 +1,16 @@
+ICONOS NECESARIOS PARA COMPILAR
+================================
+
+Coloca estos archivos en esta carpeta (build/):
+
+1. icon.ico    - Para Windows (256x256 px mínimo)
+2. icon.icns   - Para macOS (512x512 px)
+3. icon.png    - Para Linux (512x512 px)
+
+Puedes generar los 3 formatos desde una imagen PNG usando:
+- https://icoconvert.com/ (para .ico)
+- https://cloudconvert.com/png-to-icns (para .icns)
+
+O usar una herramienta como electron-icon-builder:
+npm install -g electron-icon-builder
+electron-icon-builder --input=icon.png --output=./build

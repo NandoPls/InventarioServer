@@ -1,10 +1,12 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const os = require('os');
 
 let mainWindow;
 let serverProcess = null;
+let hotspotActivo = false;
+let hotspotConfig = { nombre: 'InventarioWiFi', password: 'inventario123' };
 
 // Obtener IP local
 function getLocalIP() {
@@ -141,6 +143,83 @@ ipcMain.handle('server-status', async () => {
     return { running: serverProcess !== null };
 });
 
+// ============================================
+// HOTSPOT WIFI (Solo Windows)
+// ============================================
+
+// Estado del hotspot
+ipcMain.handle('hotspot-status', async () => {
+    return {
+        activo: hotspotActivo,
+        nombre: hotspotConfig.nombre,
+        password: hotspotConfig.password,
+        ip: getLocalIP(),
+        plataforma: process.platform
+    };
+});
+
+// Crear hotspot
+ipcMain.handle('hotspot-crear', async (event, { nombre, password }) => {
+    if (process.platform !== 'win32') {
+        return { ok: false, error: 'Solo disponible en Windows' };
+    }
+
+    if (!nombre || password.length < 8) {
+        return { ok: false, error: 'Contraseña mínimo 8 caracteres' };
+    }
+
+    hotspotConfig.nombre = nombre;
+    hotspotConfig.password = password;
+
+    return new Promise((resolve) => {
+        // Detener hotspot existente
+        exec('netsh wlan stop hostednetwork', (err) => {
+            // Configurar nuevo hotspot
+            const cmd = `netsh wlan set hostednetwork mode=allow ssid="${nombre}" key="${password}"`;
+            exec(cmd, (err) => {
+                if (err) {
+                    console.error('Error configurando hotspot:', err.message);
+                    resolve({
+                        ok: false,
+                        error: 'No se pudo configurar. Ejecuta como Administrador.'
+                    });
+                    return;
+                }
+
+                // Iniciar hotspot
+                exec('netsh wlan start hostednetwork', (err, stdout) => {
+                    if (err) {
+                        console.error('Error iniciando hotspot:', err.message);
+                        resolve({
+                            ok: false,
+                            error: 'Tu adaptador WiFi puede no soportar modo AP.'
+                        });
+                        return;
+                    }
+
+                    hotspotActivo = true;
+                    console.log(`Hotspot "${nombre}" creado`);
+                    resolve({ ok: true });
+                });
+            });
+        });
+    });
+});
+
+// Detener hotspot
+ipcMain.handle('hotspot-detener', async () => {
+    if (process.platform !== 'win32') {
+        return { ok: false, error: 'Solo disponible en Windows' };
+    }
+
+    return new Promise((resolve) => {
+        exec('netsh wlan stop hostednetwork', (err) => {
+            hotspotActivo = false;
+            resolve({ ok: true });
+        });
+    });
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
@@ -160,5 +239,9 @@ app.on('activate', () => {
 app.on('before-quit', () => {
     if (serverProcess) {
         serverProcess.kill();
+    }
+    // Detener hotspot si estaba activo
+    if (hotspotActivo && process.platform === 'win32') {
+        exec('netsh wlan stop hostednetwork');
     }
 });

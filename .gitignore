@@ -4,3 +4,12 @@ data/estado.json
 .DS_Store
 *.log
 *.pem
+
+# Builds
+dist/
+*.dmg
+*.AppImage
+
+# Archivos temporales
+*.xlsx
+.claude/

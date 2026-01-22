@@ -253,9 +253,96 @@
 
         /* Empty state */
         .empty { text-align: center; padding: 40px; color: #666; }
+
+        /* Modal de actualización obligatoria */
+        .update-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        .update-modal.visible { display: flex; }
+        .update-content {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 450px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+        .update-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        .update-content h2 {
+            margin-bottom: 15px;
+            color: #1e40af;
+        }
+        .update-content p {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        .update-versions {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            font-family: monospace;
+        }
+        .update-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .update-btn:hover { background: #2563eb; }
+        .update-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .update-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
     </style>
 </head>
 <body>
+    <!-- Modal de actualización obligatoria -->
+    <div id="updateModal" class="update-modal">
+        <div class="update-content">
+            <div class="update-icon">🔄</div>
+            <h2>Actualización Disponible</h2>
+            <p>Hay una nueva versión del sistema. Debes actualizar para continuar usando la aplicación.</p>
+            <div class="update-versions">
+                <div>Versión actual: <strong id="versionActual">-</strong></div>
+                <div>Nueva versión: <strong id="versionNueva">-</strong></div>
+            </div>
+            <button id="btnActualizar" class="update-btn" onclick="aplicarActualizacion()">
+                Actualizar Ahora
+            </button>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <div>
@@ -317,6 +404,10 @@
                     <div class="comp-value" id="compContados">0</div>
                     <div class="comp-label">Items Contados</div>
                 </div>
+                <div class="comp-stat">
+                    <div class="comp-value" id="compDiferencia">0</div>
+                    <div class="comp-label" id="compDiferenciaLabel">Por Contar</div>
+                </div>
                 <div class="comp-stat faltante">
                     <div class="comp-value" id="compFaltantes">0</div>
                     <div class="comp-label">Faltantes</div>
@@ -326,7 +417,7 @@
                     <div class="comp-label">Sobrantes</div>
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
                 <div style="text-align: center; padding: 15px; background: #fef2f2; border-radius: 8px;">
                     <div style="font-size: 0.75rem; color: #666;">Costo Faltantes</div>
                     <div style="font-size: 1.25rem; font-weight: 700; color: #ef4444;" id="costoFaltantes">$0</div>
@@ -334,6 +425,10 @@
                 <div style="text-align: center; padding: 15px; background: #f0fdf4; border-radius: 8px;">
                     <div style="font-size: 0.75rem; color: #666;">Costo Sobrantes</div>
                     <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e;" id="costoSobrantes">$0</div>
+                </div>
+                <div style="text-align: center; padding: 15px; background: #eff6ff; border-radius: 8px;">
+                    <div style="font-size: 0.75rem; color: #666;">Cruce (Diferencia)</div>
+                    <div style="font-size: 1.25rem; font-weight: 700;" id="costoCruce">$0</div>
                 </div>
             </div>
             <div style="margin-top: 15px; text-align: center;">
@@ -593,14 +688,53 @@
                     todasLasZonas = [];
                     cargarEstado();
                     break;
+                case 'update_disponible':
+                    mostrarModalActualizacion(msg.data);
+                    break;
+                case 'reiniciando':
+                    document.getElementById('btnActualizar').innerHTML = '<span class="update-spinner"></span>Reiniciando...';
+                    document.getElementById('btnActualizar').disabled = true;
+                    setTimeout(() => location.reload(), 5000);
+                    break;
             }
+        }
+
+        // Funciones de actualización
+        function mostrarModalActualizacion(data) {
+            document.getElementById('versionActual').textContent = data.versionLocal;
+            document.getElementById('versionNueva').textContent = data.versionRemota;
+            document.getElementById('updateModal').classList.add('visible');
+        }
+
+        function aplicarActualizacion() {
+            const btn = document.getElementById('btnActualizar');
+            btn.innerHTML = '<span class="update-spinner"></span>Actualizando...';
+            btn.disabled = true;
+
+            fetch('/api/update/aplicar', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        btn.innerHTML = '<span class="update-spinner"></span>Reiniciando...';
+                        setTimeout(() => location.reload(), 5000);
+                    } else {
+                        alert('Error: ' + data.error);
+                        btn.innerHTML = 'Actualizar Ahora';
+                        btn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    alert('Error de conexión');
+                    btn.innerHTML = 'Actualizar Ahora';
+                    btn.disabled = false;
+                });
         }
 
         function actualizarDashboard(data) {
             document.getElementById('totalItems').textContent = data.totalItems || 0;
             document.getElementById('eansUnicos').textContent = data.eansUnicos || 0;
             document.getElementById('zonasActivas').textContent = data.zonas?.length || 0;
-            document.getElementById('escaneres').textContent = data.escaneres?.length || 0;
+            document.getElementById('escaneres').textContent = data.auditoresUnicos || 0;
             document.getElementById('sinMaestro').textContent = data.sinMaestro || 0;
             document.getElementById('maestroCargado').textContent = data.maestroCargado || 0;
 
@@ -939,9 +1073,32 @@
             document.getElementById('compFaltantes').textContent = data.totalFaltantes || 0;
             document.getElementById('compSobrantes').textContent = data.totalSobrantes || 0;
 
+            // Diferencia entre esperados y contados
+            const diferencia = (data.totalEsperado || 0) - (data.totalEscaneado || 0);
+            const difEl = document.getElementById('compDiferencia');
+            const difLabelEl = document.getElementById('compDiferenciaLabel');
+            difEl.textContent = Math.abs(diferencia);
+            if (diferencia > 0) {
+                difEl.style.color = '#f59e0b';
+                difLabelEl.textContent = 'Por Contar';
+            } else if (diferencia < 0) {
+                difEl.style.color = '#22c55e';
+                difLabelEl.textContent = 'De Más';
+            } else {
+                difEl.style.color = '#22c55e';
+                difLabelEl.textContent = 'Completo';
+            }
+
             // Costos
             document.getElementById('costoFaltantes').textContent = formatearMoneda(data.costoFaltante || 0);
             document.getElementById('costoSobrantes').textContent = formatearMoneda(data.costoSobrante || 0);
+
+            // Cruce (diferencia): sobrantes - faltantes
+            const cruce = (data.costoSobrante || 0) - (data.costoFaltante || 0);
+            const cruceEl = document.getElementById('costoCruce');
+            cruceEl.textContent = formatearMoneda(Math.abs(cruce));
+            cruceEl.style.color = cruce >= 0 ? '#22c55e' : '#ef4444';
+            cruceEl.textContent = (cruce >= 0 ? '+' : '-') + formatearMoneda(Math.abs(cruce));
         }
 
         function formatearMoneda(valor) {
@@ -1033,11 +1190,25 @@
             if (e.key === 'Escape') cerrarModales();
         });
 
+        // Verificar actualizaciones
+        function verificarActualizaciones() {
+            fetch('/api/update/check')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.updateDisponible) {
+                        mostrarModalActualizacion(data);
+                    }
+                })
+                .catch(() => {});
+        }
+
         // Init
         document.addEventListener('DOMContentLoaded', () => {
             conectar();
             cargarEstado();
             cargarComparacion();
+            // Verificar actualizaciones al cargar
+            setTimeout(verificarActualizaciones, 3000);
         });
     </script>
 </body>

@@ -117,10 +117,20 @@ echo ║  Presiona Ctrl+C para detener el servidor                  ║
 echo ╚════════════════════════════════════════════════════════════╝
 echo.
 
-:: Iniciar servidor (esto mantendrá la ventana abierta)
+:: Iniciar servidor con auto-reinicio para actualizaciones
+:server_loop
 node server.js
+set EXIT_CODE=%errorlevel%
 
-:: Si llegamos aquí, el servidor se detuvo
+:: Si el servidor terminó con código 0, es una actualización - reiniciar
+if %EXIT_CODE% equ 0 (
+    echo.
+    echo [*] Reiniciando servidor tras actualización...
+    timeout /t 3 >nul
+    goto :server_loop
+)
+
+:: Si llegamos aquí, el servidor se detuvo con error o Ctrl+C
 echo.
 echo [*] Servidor detenido.
 

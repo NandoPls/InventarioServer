@@ -6,6 +6,54 @@ const XLSX = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+
+// ============================================
+// SISTEMA DE AUTO-UPDATE
+// ============================================
+let updateDisponible = false;
+let versionLocal = '';
+let versionRemota = '';
+
+function verificarActualizaciones() {
+    exec('git fetch origin main', { cwd: __dirname }, (err) => {
+        if (err) {
+            console.log('Error al verificar actualizaciones:', err.message);
+            return;
+        }
+
+        // Obtener commit local
+        exec('git rev-parse HEAD', { cwd: __dirname }, (err, localCommit) => {
+            if (err) return;
+            versionLocal = localCommit.trim().substring(0, 7);
+
+            // Obtener commit remoto
+            exec('git rev-parse origin/main', { cwd: __dirname }, (err, remoteCommit) => {
+                if (err) return;
+                versionRemota = remoteCommit.trim().substring(0, 7);
+
+                const hayUpdate = localCommit.trim() !== remoteCommit.trim();
+
+                if (hayUpdate && !updateDisponible) {
+                    console.log(`Nueva versión disponible: ${versionRemota} (actual: ${versionLocal})`);
+                    updateDisponible = true;
+                    // Notificar a todos los clientes
+                    broadcast({
+                        tipo: 'update_disponible',
+                        data: { versionLocal, versionRemota }
+                    });
+                } else if (!hayUpdate && updateDisponible) {
+                    updateDisponible = false;
+                }
+            });
+        });
+    });
+}
+
+// Verificar cada 2 minutos
+setInterval(verificarActualizaciones, 2 * 60 * 1000);
+// Verificar al iniciar (después de 10 segundos)
+setTimeout(verificarActualizaciones, 10000);
 
 const app = express();
 const server = http.createServer(app);
@@ -530,6 +578,11 @@ function getResumen() {
     const eansUnicos = new Set(estado.todosLosItems.map(i => i.ean)).size;
     const sinMaestro = estado.todosLosItems.filter(i => !i.existeEnMaestro).length;
 
+    // Contar auditores únicos por nombre normalizado
+    const auditoresUnicos = new Set(
+        Object.values(estado.escaneres).map(e => e.nombreNormalizado || normalizarNombre(e.nombre))
+    ).size;
+
     // Obtener comparación
     const comparacion = getComparacion();
 
@@ -542,6 +595,7 @@ function getResumen() {
         zonasActivas: zonasArray.filter(z => z.activa).length,
         zonas: zonasArray,
         escaneres: escaneresArray,
+        auditoresUnicos,
         maestroCargado: estado.maestro.length,
         stockTiendaCargado: estado.stockTienda.length,
         comparacion,
@@ -680,6 +734,7 @@ app.get('/api/comparacion', (req, res) => {
 
 // Exportar a Excel
 app.get('/api/exportar', (req, res) => {
+    // HOJA 1: Detalle completo
     const items = estado.todosLosItems.map(i => ({
         'Zona': i.zonaNombre,
         'EAN': i.ean,
@@ -693,9 +748,9 @@ app.get('/api/exportar', (req, res) => {
 
     const ws = XLSX.utils.json_to_sheet(items);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
 
-    // Ajustar ancho de columnas
+    // Ajustar ancho de columnas Hoja 1
     ws['!cols'] = [
         { wch: 12 }, // Zona
         { wch: 15 }, // EAN
@@ -705,6 +760,74 @@ app.get('/api/exportar', (req, res) => {
         { wch: 12 }, // En Maestro
         { wch: 15 }, // Escaneado por
         { wch: 20 }  // Hora
+    ];
+
+    // HOJA 2: Resumen por código
+    // Crear mapa de stock esperado (tienda)
+    const stockEsperadoMap = {};
+    estado.stockTienda.forEach(item => {
+        if (!stockEsperadoMap[item.ean]) {
+            stockEsperadoMap[item.ean] = 0;
+        }
+        stockEsperadoMap[item.ean] += item.cantidad;
+    });
+
+    // Agrupar por EAN y sumar cantidades escaneadas
+    const resumenMap = {};
+    estado.todosLosItems.forEach(item => {
+        if (!resumenMap[item.ean]) {
+            // Buscar costo en el maestro
+            const productoMaestro = estado.maestro.find(p => p.ean === item.ean);
+            resumenMap[item.ean] = {
+                ean: item.ean,
+                codigo: item.codigo,
+                descripcion: item.descripcion,
+                cantidadContada: 0,
+                stockEsperado: stockEsperadoMap[item.ean] || 0,
+                costo: productoMaestro?.costo || 0,
+                existeEnMaestro: item.existeEnMaestro
+            };
+        }
+        resumenMap[item.ean].cantidadContada += item.cantidad;
+    });
+
+    // Convertir a array y ordenar: primero los que están en maestro, luego los que no
+    const resumenArray = Object.values(resumenMap).sort((a, b) => {
+        if (a.existeEnMaestro && !b.existeEnMaestro) return -1;
+        if (!a.existeEnMaestro && b.existeEnMaestro) return 1;
+        return 0;
+    });
+
+    // Formatear para Excel
+    const resumenItems = resumenArray.map(r => {
+        const diferencia = r.cantidadContada - r.stockEsperado;
+        return {
+            'Código': r.codigo,
+            'EAN': r.ean,
+            'Descripción': r.descripcion,
+            'Stock Esperado': r.stockEsperado,
+            'Cantidad Contada': r.cantidadContada,
+            'Diferencia': diferencia,
+            'Costo Unitario': r.costo,
+            'Costo Diferencia': diferencia * r.costo,
+            'En Maestro': r.existeEnMaestro ? 'SI' : 'NO'
+        };
+    });
+
+    const ws2 = XLSX.utils.json_to_sheet(resumenItems);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Resumen');
+
+    // Ajustar ancho de columnas Hoja 2
+    ws2['!cols'] = [
+        { wch: 15 }, // Código
+        { wch: 15 }, // EAN
+        { wch: 35 }, // Descripción
+        { wch: 14 }, // Stock Esperado
+        { wch: 14 }, // Cantidad Contada
+        { wch: 12 }, // Diferencia
+        { wch: 14 }, // Costo Unitario
+        { wch: 14 }, // Costo Diferencia
+        { wch: 12 }  // En Maestro
     ];
 
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -849,6 +972,138 @@ app.post('/api/zona/eliminar', (req, res) => {
     enviarZonasPersonalizadas();
 
     res.json({ ok: true });
+});
+
+// ============================================
+// ENDPOINTS DE ACTUALIZACIÓN
+// ============================================
+
+// Verificar si hay actualizaciones
+app.get('/api/update/check', (req, res) => {
+    verificarActualizaciones();
+    res.json({
+        updateDisponible,
+        versionLocal,
+        versionRemota
+    });
+});
+
+// Ejecutar actualización
+app.post('/api/update/aplicar', (req, res) => {
+    console.log('Iniciando actualización...');
+
+    exec('git pull origin main', { cwd: __dirname }, (err, stdout, stderr) => {
+        if (err) {
+            console.error('Error al actualizar:', err.message);
+            return res.status(500).json({ error: 'Error al actualizar: ' + err.message });
+        }
+
+        console.log('Actualización completada:', stdout);
+
+        // Notificar a todos que se va a reiniciar
+        broadcast({
+            tipo: 'reiniciando',
+            data: { mensaje: 'Servidor actualizándose, reconectando en 5 segundos...' }
+        });
+
+        res.json({ ok: true, mensaje: 'Actualización aplicada, reiniciando servidor...' });
+
+        // Reiniciar el servidor después de 2 segundos
+        setTimeout(() => {
+            console.log('Reiniciando servidor...');
+            process.exit(0); // El script de inicio debe reiniciar el proceso
+        }, 2000);
+    });
+});
+
+// ============================================
+// HOTSPOT WIFI (Solo Windows)
+// ============================================
+let hotspotActivo = false;
+let hotspotConfig = { nombre: 'InventarioWiFi', password: 'inventario123' };
+
+// Obtener estado del hotspot
+app.get('/api/hotspot/estado', (req, res) => {
+    // Obtener IP actual
+    const interfaces = require('os').networkInterfaces();
+    let ip = 'localhost';
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                ip = iface.address;
+                break;
+            }
+        }
+    }
+
+    res.json({
+        activo: hotspotActivo,
+        nombre: hotspotConfig.nombre,
+        password: hotspotConfig.password,
+        ip: ip,
+        plataforma: process.platform
+    });
+});
+
+// Crear hotspot
+app.post('/api/hotspot/crear', (req, res) => {
+    const { nombre, password } = req.body;
+
+    if (!nombre || !password || password.length < 8) {
+        return res.status(400).json({ error: 'Nombre y contraseña (mín 8 caracteres) requeridos' });
+    }
+
+    if (process.platform !== 'win32') {
+        return res.status(400).json({ error: 'Esta función solo está disponible en Windows' });
+    }
+
+    hotspotConfig.nombre = nombre;
+    hotspotConfig.password = password;
+
+    // Detener hotspot existente
+    exec('netsh wlan stop hostednetwork', { cwd: __dirname }, () => {
+        // Configurar nuevo hotspot
+        const cmd = `netsh wlan set hostednetwork mode=allow ssid="${nombre}" key="${password}"`;
+        exec(cmd, { cwd: __dirname }, (err) => {
+            if (err) {
+                console.error('Error configurando hotspot:', err.message);
+                return res.status(500).json({
+                    error: 'No se pudo configurar el hotspot. Asegúrate de ejecutar como Administrador.',
+                    detalle: err.message
+                });
+            }
+
+            // Iniciar hotspot
+            exec('netsh wlan start hostednetwork', { cwd: __dirname }, (err, stdout) => {
+                if (err) {
+                    console.error('Error iniciando hotspot:', err.message);
+                    return res.status(500).json({
+                        error: 'No se pudo iniciar el hotspot. Tu adaptador WiFi puede no soportar modo AP.',
+                        detalle: err.message
+                    });
+                }
+
+                hotspotActivo = true;
+                console.log(`Hotspot "${nombre}" creado exitosamente`);
+                res.json({ ok: true, mensaje: `Hotspot "${nombre}" creado`, password });
+            });
+        });
+    });
+});
+
+// Detener hotspot
+app.post('/api/hotspot/detener', (req, res) => {
+    if (process.platform !== 'win32') {
+        return res.status(400).json({ error: 'Esta función solo está disponible en Windows' });
+    }
+
+    exec('netsh wlan stop hostednetwork', { cwd: __dirname }, (err) => {
+        hotspotActivo = false;
+        if (err) {
+            return res.json({ ok: true, mensaje: 'Hotspot detenido (o no estaba activo)' });
+        }
+        res.json({ ok: true, mensaje: 'Hotspot detenido' });
+    });
 });
 
 // ============================================

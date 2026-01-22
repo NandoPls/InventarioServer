@@ -328,6 +328,146 @@
             -webkit-app-region: no-drag;
             border-top: 1px solid #eee;
         }
+
+        /* Hotspot Panel (Bottom) */
+        .hotspot-panel {
+            position: fixed;
+            bottom: 36px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: white;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 500;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+        }
+        .hotspot-panel.visible {
+            transform: translateY(0);
+        }
+        .hotspot-toggle {
+            -webkit-app-region: no-drag;
+            position: fixed;
+            bottom: 44px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e3a5f;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px 20px 0 0;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 501;
+            transition: all 0.2s;
+        }
+        .hotspot-toggle:hover {
+            background: #2d5a87;
+        }
+        .hotspot-toggle .arrow {
+            transition: transform 0.3s;
+        }
+        .hotspot-toggle.active .arrow {
+            transform: rotate(180deg);
+        }
+        .hotspot-toggle .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6b7280;
+        }
+        .hotspot-toggle .dot.activo {
+            background: #22c55e;
+            animation: pulse 2s infinite;
+        }
+        .hotspot-content {
+            padding: 20px;
+        }
+        .hotspot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .hotspot-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .hotspot-status {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .hotspot-status.activo { background: #22c55e; }
+        .hotspot-status.inactivo { background: rgba(255,255,255,0.2); }
+        .hotspot-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .hotspot-row {
+            display: flex;
+            gap: 10px;
+        }
+        .hotspot-field {
+            flex: 1;
+        }
+        .hotspot-field label {
+            font-size: 10px;
+            opacity: 0.7;
+            display: block;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+        .hotspot-field input {
+            -webkit-app-region: no-drag;
+            width: 100%;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            background: rgba(255,255,255,0.9);
+        }
+        .hotspot-field input:disabled {
+            background: rgba(255,255,255,0.5);
+        }
+        .hotspot-btn {
+            -webkit-app-region: no-drag;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .hotspot-btn.crear { background: #22c55e; color: white; }
+        .hotspot-btn.detener { background: #ef4444; color: white; }
+        .hotspot-btn:hover { opacity: 0.9; }
+        .hotspot-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .hotspot-info {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            display: none;
+        }
+        .hotspot-info.visible { display: block; }
+        .hotspot-info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 4px 0;
+        }
+        .hotspot-info-row span:first-child { opacity: 0.7; }
+        .hotspot-info-row span:last-child { font-weight: 600; }
     </style>
 </head>
 <body>
@@ -403,6 +543,52 @@
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Botón toggle hotspot -->
+    <button class="hotspot-toggle" id="hotspotToggle" onclick="toggleHotspotPanel()">
+        <span class="dot" id="hotspotDot"></span>
+        <span>Red WiFi</span>
+        <span class="arrow">▲</span>
+    </button>
+
+    <!-- Panel hotspot -->
+    <div class="hotspot-panel" id="hotspotPanel">
+        <div class="hotspot-content">
+            <div class="hotspot-header">
+                <h3>📶 Configurar Red WiFi</h3>
+                <span class="hotspot-status inactivo" id="hotspotStatus">Inactivo</span>
+            </div>
+            <div class="hotspot-form">
+                <div class="hotspot-row">
+                    <div class="hotspot-field">
+                        <label>Nombre de Red</label>
+                        <input type="text" id="hotspotNombre" value="InventarioWiFi" placeholder="SSID">
+                    </div>
+                    <div class="hotspot-field">
+                        <label>Contraseña</label>
+                        <input type="text" id="hotspotPassword" value="inventario123" placeholder="Mín 8 caracteres">
+                    </div>
+                </div>
+                <button class="hotspot-btn crear" id="hotspotBtn" onclick="toggleHotspot()">
+                    Crear Red WiFi
+                </button>
+            </div>
+            <div class="hotspot-info" id="hotspotInfo">
+                <div class="hotspot-info-row">
+                    <span>Red:</span>
+                    <span id="infoNombre">-</span>
+                </div>
+                <div class="hotspot-info-row">
+                    <span>Contraseña:</span>
+                    <span id="infoPassword">-</span>
+                </div>
+                <div class="hotspot-info-row">
+                    <span>Conectar a:</span>
+                    <span id="infoIP">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="bottom-bar">
         <span>v2.0.0</span>
@@ -540,6 +726,115 @@
                 });
             }
         });
+
+        // ============================================
+        // HOTSPOT WIFI
+        // ============================================
+        let hotspotActivo = false;
+        let panelAbierto = false;
+
+        function toggleHotspotPanel() {
+            panelAbierto = !panelAbierto;
+            const panel = document.getElementById('hotspotPanel');
+            const toggle = document.getElementById('hotspotToggle');
+
+            if (panelAbierto) {
+                panel.classList.add('visible');
+                toggle.classList.add('active');
+            } else {
+                panel.classList.remove('visible');
+                toggle.classList.remove('active');
+            }
+        }
+
+        async function cargarEstadoHotspot() {
+            try {
+                const estado = await ipcRenderer.invoke('hotspot-status');
+                hotspotActivo = estado.activo;
+                actualizarUIHotspot(estado);
+            } catch (e) {
+                // Si falla, ocultar sección
+                document.getElementById('hotspotCard').style.display = 'none';
+            }
+        }
+
+        function actualizarUIHotspot(estado) {
+            const statusEl = document.getElementById('hotspotStatus');
+            const btn = document.getElementById('hotspotBtn');
+            const info = document.getElementById('hotspotInfo');
+            const nombreInput = document.getElementById('hotspotNombre');
+            const passInput = document.getElementById('hotspotPassword');
+            const dot = document.getElementById('hotspotDot');
+
+            if (estado.activo) {
+                statusEl.textContent = 'Activo';
+                statusEl.className = 'hotspot-status activo';
+                btn.textContent = 'Detener Red';
+                btn.className = 'hotspot-btn detener';
+                info.classList.add('visible');
+                dot.classList.add('activo');
+
+                document.getElementById('infoNombre').textContent = estado.nombre;
+                document.getElementById('infoPassword').textContent = estado.password;
+                document.getElementById('infoIP').textContent = `http://${estado.ip}:3000`;
+
+                nombreInput.disabled = true;
+                passInput.disabled = true;
+            } else {
+                statusEl.textContent = 'Inactivo';
+                statusEl.className = 'hotspot-status inactivo';
+                btn.textContent = 'Crear Red WiFi';
+                btn.className = 'hotspot-btn crear';
+                info.classList.remove('visible');
+                dot.classList.remove('activo');
+
+                nombreInput.disabled = false;
+                passInput.disabled = false;
+            }
+        }
+
+        async function toggleHotspot() {
+            const btn = document.getElementById('hotspotBtn');
+            btn.disabled = true;
+
+            try {
+                if (hotspotActivo) {
+                    btn.textContent = 'Deteniendo...';
+                    const result = await ipcRenderer.invoke('hotspot-detener');
+                    if (result.ok) {
+                        hotspotActivo = false;
+                        showToast('Red WiFi detenida');
+                    }
+                } else {
+                    const nombre = document.getElementById('hotspotNombre').value.trim();
+                    const password = document.getElementById('hotspotPassword').value;
+
+                    if (!nombre || password.length < 8) {
+                        showToast('Contraseña mínimo 8 caracteres');
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    btn.textContent = 'Creando...';
+                    const result = await ipcRenderer.invoke('hotspot-crear', { nombre, password });
+
+                    if (result.ok) {
+                        hotspotActivo = true;
+                        showToast('Red WiFi creada');
+                    } else {
+                        showToast(result.error || 'Error al crear red');
+                    }
+                }
+                cargarEstadoHotspot();
+            } catch (e) {
+                showToast('Error: ' + e.message);
+            }
+
+            btn.disabled = false;
+        }
+
+        // Cargar estado del hotspot al iniciar
+        cargarEstadoHotspot();
     </script>
 </body>
 </html>

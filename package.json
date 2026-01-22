@@ -1,31 +1,88 @@
 {
   "name": "inventario-server",
-  "version": "1.0.0",
-  "description": "Servidor de inventario con dashboard web y soporte para múltiples escáneres",
+  "version": "2.0.0",
+  "description": "Sistema de inventario con escáneres móviles",
   "main": "main.js",
+  "author": "NandoPls",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NandoPls/InventarioServer"
+  },
   "scripts": {
     "start": "electron .",
     "server": "node server.js",
+    "icons": "node scripts/generate-icons.js",
+    "prebuild": "node scripts/ensure-icons.js",
     "build": "electron-builder",
+    "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win"
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
   },
   "build": {
-    "appId": "com.inventario.server",
+    "appId": "com.nandopls.inventario",
     "productName": "Inventario Server",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "**/*",
-      "!dist/**"
+      "!dist/**",
+      "!.git/**",
+      "!.github/**",
+      "!*.md"
     ],
     "mac": {
       "category": "public.app-category.business",
-      "target": "dmg"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "build/icon.icns"
     },
     "win": {
-      "target": "portable"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Office",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Inventario Server"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "NandoPls",
+      "repo": "InventarioServer",
+      "releaseType": "release"
     }
   },
   "dependencies": {
@@ -36,7 +93,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "electron": "^40.0.0",
+    "electron": "^28.0.0",
     "electron-builder": "^24.13.3"
   }
 }
