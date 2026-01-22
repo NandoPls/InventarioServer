@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.5rem; }
+        .header .status { font-size: 0.875rem; color: #22c55e; }
+        .header .status.off { color: #ef4444; }
+        .header-actions { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-secondary { background: #e5e7eb; color: #333; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn:hover { opacity: 0.9; }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-value { font-size: 2rem; font-weight: 700; }
+        .stat-label { font-size: 0.875rem; color: #666; }
+        .stat-card.warning .stat-value { color: #f59e0b; }
+        .stat-card.danger .stat-value { color: #ef4444; }
+        .stat-card.success .stat-value { color: #22c55e; }
+        .stat-card.info .stat-value { color: #3b82f6; }
+
+        /* Comparación Panel */
+        .comparacion-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .comparacion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .comparacion-header h2 { font-size: 1.1rem; }
+        .progreso-bar {
+            background: #e5e7eb;
+            height: 24px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        .progreso-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #22c55e, #3b82f6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: width 0.5s;
+        }
+        .comparacion-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .comparacion-stats { grid-template-columns: repeat(2, 1fr); }
+        }
+        .comp-stat {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+        .comp-stat.faltante { background: #fef2f2; }
+        .comp-stat.faltante .comp-value { color: #ef4444; }
+        .comp-stat.sobrante { background: #f0fdf4; }
+        .comp-stat.sobrante .comp-value { color: #22c55e; }
+        .comp-value { font-size: 1.5rem; font-weight: 700; }
+        .comp-label { font-size: 0.75rem; color: #666; margin-top: 4px; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+        .tab.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Main layout */
+        .main { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+        @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+        /* Panel */
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-content { padding: 15px; max-height: 500px; overflow-y: auto; }
+
+        /* Zonas */
+        .zona-card {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #e5e7eb;
+        }
+        .zona-card.activa { border-left-color: #22c55e; }
+        .zona-nombre { font-weight: 600; font-size: 1rem; }
+        .zona-info { font-size: 0.875rem; color: #666; margin-top: 5px; }
+        .zona-stats { display: flex; gap: 15px; margin-top: 8px; font-size: 0.875rem; }
+        .zona-auditor { color: #3b82f6; font-weight: 500; }
+
+        /* Items table */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        .items-table th, .items-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .items-table th {
+            background: #f9fafb;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        .items-table tr:hover { background: #f9fafb; }
+        .items-table .ean { font-family: monospace; }
+        .items-table .no-maestro { color: #ef4444; }
+        .items-table .cantidad {
+            font-weight: 600;
+            text-align: center;
+        }
+        .items-table .acciones { white-space: nowrap; }
+        .items-table .acciones button {
+            padding: 4px 8px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        .btn-edit { background: #3b82f6; color: white; }
+        .btn-delete { background: #ef4444; color: white; }
+
+        /* Filtros */
+        .filtros {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .filtros select, .filtros input {
+            padding: 8px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        .filtros input { flex: 1; min-width: 200px; }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 450px;
+        }
+        .modal h3 { margin-bottom: 20px; }
+        .modal .form-group { margin-bottom: 15px; }
+        .modal label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .modal input, .modal select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+        /* Empty state */
+        .empty { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div>
+                <h1>Sistema de Inventario</h1>
+                <span class="status" id="status">● Conectado</span>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="exportarExcel()">Exportar Excel</button>
+                <button class="btn btn-secondary" onclick="mostrarModalMaestro()">Cargar Maestro</button>
+                <button class="btn btn-secondary" onclick="mostrarModalStock()">Cargar Stock Tienda</button>
+                <button class="btn btn-primary" onclick="mostrarModalSesion()">Nueva Sesión</button>
+            </div>
+        </header>
+
+        <section class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalItems">0</div>
+                <div class="stat-label">Total Items</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="eansUnicos">0</div>
+                <div class="stat-label">EANs Únicos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="zonasActivas">0</div>
+                <div class="stat-label">Zonas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="escaneres">0</div>
+                <div class="stat-label">Auditores</div>
+            </div>
+            <div class="stat-card" id="sinMaestroCard">
+                <div class="stat-value" id="sinMaestro">0</div>
+                <div class="stat-label">Sin Maestro</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="maestroCargado">0</div>
+                <div class="stat-label">Productos Maestro</div>
+            </div>
+        </section>
+
+        <!-- Panel de Comparación -->
+        <section class="comparacion-panel" id="comparacionPanel" style="display: none;">
+            <div class="comparacion-header">
+                <h2>Comparación con Stock Tienda</h2>
+                <span id="stockNombre" style="color:#666; font-size:0.875rem;"></span>
+            </div>
+            <div class="progreso-bar">
+                <div class="progreso-fill" id="progresoFill" style="width: 0%;">
+                    <span id="progresoTexto">0%</span>
+                </div>
+            </div>
+            <div class="comparacion-stats">
+                <div class="comp-stat">
+                    <div class="comp-value" id="compEsperados">0</div>
+                    <div class="comp-label">Items Esperados</div>
+                </div>
+                <div class="comp-stat">
+                    <div class="comp-value" id="compContados">0</div>
+                    <div class="comp-label">Items Contados</div>
+                </div>
+                <div class="comp-stat faltante">
+                    <div class="comp-value" id="compFaltantes">0</div>
+                    <div class="comp-label">Faltantes</div>
+                </div>
+                <div class="comp-stat sobrante">
+                    <div class="comp-value" id="compSobrantes">0</div>
+                    <div class="comp-label">Sobrantes</div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                <div style="text-align: center; padding: 15px; background: #fef2f2; border-radius: 8px;">
+                    <div style="font-size: 0.75rem; color: #666;">Costo Faltantes</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #ef4444;" id="costoFaltantes">$0</div>
+                </div>
+                <div style="text-align: center; padding: 15px; background: #f0fdf4; border-radius: 8px;">
+                    <div style="font-size: 0.75rem; color: #666;">Costo Sobrantes</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #22c55e;" id="costoSobrantes">$0</div>
+                </div>
+            </div>
+            <div style="margin-top: 15px; text-align: center;">
+                <button class="btn btn-secondary" onclick="verDetalleFaltantes()" style="margin-right: 10px;">Ver Faltantes</button>
+                <button class="btn btn-secondary" onclick="verDetalleSobrantes()">Ver Sobrantes</button>
+            </div>
+        </section>
+
+        <main class="main">
+            <section class="panel">
+                <div class="panel-header">
+                    <span>Zonas y Auditores</span>
+                </div>
+                <div class="panel-content" id="zonasPanel">
+                    <div class="empty">Sin zonas activas</div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <span>Items Escaneados</span>
+                    <span id="itemsCount">0</span>
+                </div>
+                <div class="panel-content" style="max-height: none; padding: 0;">
+                    <div class="filtros" style="padding: 15px; border-bottom: 1px solid #e5e7eb;">
+                        <select id="filtroZona" onchange="filtrarItems()">
+                            <option value="">Todas las zonas</option>
+                        </select>
+                        <input type="text" id="filtroBuscar" placeholder="Buscar EAN o descripción..." oninput="filtrarItems()">
+                    </div>
+                    <div style="max-height: 500px; overflow-y: auto;">
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Zona</th>
+                                    <th>EAN</th>
+                                    <th>Descripción</th>
+                                    <th>Cant.</th>
+                                    <th>Auditor</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsBody">
+                                <tr><td colspan="6" class="empty">Sin escaneos</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Nueva Sesión -->
+    <div class="modal" id="modalSesion">
+        <div class="modal-content">
+            <h3>Nueva Sesión</h3>
+            <p style="color:#666;margin-bottom:15px;">Esto limpiará todos los datos actuales.</p>
+            <div class="form-group">
+                <label>Nombre de la sesión</label>
+                <input type="text" id="nombreSesion" placeholder="Inventario Enero 2024">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="iniciarSesion()">Iniciar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cargar Maestro -->
+    <div class="modal" id="modalMaestro">
+        <div class="modal-content">
+            <h3>Cargar Maestro</h3>
+            <p style="color:#666;margin-bottom:15px;">Archivo Excel con columnas: EAN, Código, Descripción, Costo</p>
+            <div class="form-group">
+                <input type="file" id="archivoMaestro" accept=".xlsx,.xls,.csv">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="cargarMaestro()">Cargar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cargar Stock Tienda -->
+    <div class="modal" id="modalStock">
+        <div class="modal-content">
+            <h3>Cargar Stock Tienda</h3>
+            <p style="color:#666;margin-bottom:15px;">Archivo Excel con columnas: EAN, Cantidad</p>
+            <p style="color:#888;font-size:12px;margin-bottom:15px;">(El costo se obtiene del Maestro)</p>
+            <div class="form-group">
+                <input type="file" id="archivoStock" accept=".xlsx,.xls,.csv">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="cargarStock()">Cargar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalle Faltantes -->
+    <div class="modal" id="modalFaltantes">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h3>Items Faltantes</h3>
+            <p style="color:#666;margin-bottom:15px;">Productos que no han sido escaneados</p>
+            <div id="listaFaltantes" style="max-height: 400px; overflow-y: auto;"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalle Sobrantes -->
+    <div class="modal" id="modalSobrantes">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h3>Items Sobrantes</h3>
+            <p style="color:#666;margin-bottom:15px;">Productos escaneados de más o no esperados</p>
+            <div id="listaSobrantes" style="max-height: 400px; overflow-y: auto;"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Item -->
+    <div class="modal" id="modalEditar">
+        <div class="modal-content">
+            <h3>Editar Item</h3>
+            <div class="form-group">
+                <label>EAN</label>
+                <input type="text" id="editEan" readonly style="background:#f5f5f5;">
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <input type="text" id="editDesc">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" id="editCantidad" min="1">
+            </div>
+            <div class="form-group">
+                <label>Zona</label>
+                <select id="editZona"></select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarEdicion()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Confirmar Eliminar Item -->
+    <div class="modal" id="modalEliminar">
+        <div class="modal-content">
+            <h3>Eliminar Item</h3>
+            <p style="margin-bottom:20px;">¿Estás seguro de eliminar este item?</p>
+            <p><strong id="eliminarEan"></strong></p>
+            <p style="color:#666;" id="eliminarDesc"></p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-danger" onclick="confirmarEliminar()">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Zona -->
+    <div class="modal" id="modalEditarZona">
+        <div class="modal-content">
+            <h3>Editar Zona</h3>
+            <div class="form-group">
+                <label>Nombre de la zona</label>
+                <input type="text" id="editZonaNombre">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarEdicionZona()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Eliminar Zona -->
+    <div class="modal" id="modalEliminarZona">
+        <div class="modal-content">
+            <h3>Eliminar Zona</h3>
+            <p style="margin-bottom:15px; color:#ef4444;">¡Atención! Esto eliminará la zona y todos sus items.</p>
+            <p>¿Eliminar la zona <strong id="eliminarZonaNombre"></strong>?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-danger" onclick="confirmarEliminarZona()">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let todosLosItems = [];
+        let todasLasZonas = [];
+        let itemEditando = null;
+        let itemEliminando = null;
+        let zonaEditando = null;
+        let zonaEliminando = null;
+        let comparacionData = null;
+
+        // === WEBSOCKET ===
+        function conectar() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            ws.onopen = () => {
+                document.getElementById('status').textContent = '● Conectado';
+                document.getElementById('status').className = 'status';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('status').textContent = '● Desconectado';
+                document.getElementById('status').className = 'status off';
+                setTimeout(conectar, 2000);
+            };
+
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                manejarMensaje(msg);
+            };
+        }
+
+        function manejarMensaje(msg) {
+            switch(msg.tipo) {
+                case 'estado_inicial':
+                case 'estado':
+                case 'actualizacion':
+                    actualizarDashboard(msg.data);
+                    break;
+                case 'nuevo_escaneo':
+                    actualizarDashboard(msg.data.resumen);
+                    break;
+                case 'lista_zonas':
+                case 'lista_zonas_dashboard':
+                    todasLasZonas = msg.data.zonas || [];
+                    actualizarFiltroZonas();
+                    break;
+                case 'maestro_cargado':
+                    alert(`Maestro cargado: ${msg.data.cantidad} productos`);
+                    cargarEstado();
+                    break;
+                case 'stock_tienda_cargado':
+                    alert(`Stock Tienda cargado: ${msg.data.cantidad} productos`);
+                    cargarComparacion();
+                    break;
+                case 'item_actualizado':
+                case 'item_eliminado':
+                case 'zona_actualizada':
+                case 'zona_eliminada':
+                    cargarEstado();
+                    break;
+                case 'nueva_sesion':
+                    // Limpiar datos locales y recargar estado
+                    todosLosItems = [];
+                    todasLasZonas = [];
+                    cargarEstado();
+                    break;
+            }
+        }
+
+        function actualizarDashboard(data) {
+            document.getElementById('totalItems').textContent = data.totalItems || 0;
+            document.getElementById('eansUnicos').textContent = data.eansUnicos || 0;
+            document.getElementById('zonasActivas').textContent = data.zonas?.length || 0;
+            document.getElementById('escaneres').textContent = data.escaneres?.length || 0;
+            document.getElementById('sinMaestro').textContent = data.sinMaestro || 0;
+            document.getElementById('maestroCargado').textContent = data.maestroCargado || 0;
+
+            const sinMaestroCard = document.getElementById('sinMaestroCard');
+            sinMaestroCard.className = 'stat-card' + (data.sinMaestro > 0 ? ' danger' : '');
+
+            todasLasZonas = data.zonas || [];
+            todosLosItems = data.ultimosEscaneos || [];
+
+            actualizarZonas(data.zonas || [], data.escaneres || []);
+            actualizarFiltroZonas();
+            filtrarItems();
+
+            // Si hay stock tienda cargado, actualizar comparación
+            if (data.stockTiendaCargado) {
+                cargarComparacion();
+            }
+        }
+
+        function actualizarZonas(zonas, escaneres) {
+            const panel = document.getElementById('zonasPanel');
+
+            if (zonas.length === 0 && escaneres.length === 0) {
+                panel.innerHTML = '<div class="empty">Sin zonas activas</div>';
+                return;
+            }
+
+            let html = '';
+
+            // Mostrar todas las zonas con info del auditor
+            zonas.forEach(zona => {
+                const auditor = zona.escaner || zona.creadoPor;
+                html += `
+                    <div class="zona-card ${zona.escaner ? 'activa' : ''}">
+                        <div style="display:flex; justify-content:space-between; align-items:start;">
+                            <div>
+                                <div class="zona-nombre">${zona.nombre}</div>
+                                <div class="zona-auditor">${auditor ? auditor : 'Sin auditor'}</div>
+                            </div>
+                            <div style="display:flex; gap:5px;">
+                                <button onclick="editarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#3b82f6; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Editar</button>
+                                <button onclick="eliminarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Eliminar</button>
+                            </div>
+                        </div>
+                        <div class="zona-stats">
+                            <span>${zona.totalItems || 0} items</span>
+                            <span>${zona.eansUnicos || 0} EANs</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            panel.innerHTML = html;
+        }
+
+        function actualizarFiltroZonas() {
+            const select = document.getElementById('filtroZona');
+            const editSelect = document.getElementById('editZona');
+            const current = select.value;
+
+            select.innerHTML = '<option value="">Todas las zonas</option>';
+            editSelect.innerHTML = '';
+
+            todasLasZonas.forEach(z => {
+                select.innerHTML += `<option value="${z.id}">${z.nombre}</option>`;
+                editSelect.innerHTML += `<option value="${z.id}">${z.nombre}</option>`;
+            });
+
+            select.value = current;
+        }
+
+        function filtrarItems() {
+            const zonaFiltro = document.getElementById('filtroZona').value;
+            const buscar = document.getElementById('filtroBuscar').value.toLowerCase();
+
+            let items = todosLosItems;
+
+            if (zonaFiltro) {
+                items = items.filter(i => i.zonaId === zonaFiltro);
+            }
+
+            if (buscar) {
+                items = items.filter(i =>
+                    i.ean.toLowerCase().includes(buscar) ||
+                    i.descripcion.toLowerCase().includes(buscar)
+                );
+            }
+
+            renderItems(items);
+            document.getElementById('itemsCount').textContent = items.length;
+        }
+
+        function renderItems(items) {
+            const tbody = document.getElementById('itemsBody');
+
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin resultados</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td>${item.zonaNombre || item.zonaId || '-'}</td>
+                    <td class="ean ${!item.existeEnMaestro ? 'no-maestro' : ''}">${item.ean}</td>
+                    <td>${item.descripcion}</td>
+                    <td class="cantidad">${item.cantidad}</td>
+                    <td>${item.escaner || '-'}</td>
+                    <td class="acciones">
+                        <button class="btn-edit" onclick="editarItem('${item.id}')">Editar</button>
+                        <button class="btn-delete" onclick="eliminarItem('${item.id}')">Eliminar</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // === ACCIONES ===
+        async function cargarEstado() {
+            const res = await fetch('/api/estado');
+            const data = await res.json();
+            actualizarDashboard(data);
+        }
+
+        function exportarExcel() {
+            window.location.href = '/api/exportar';
+        }
+
+        function mostrarModalSesion() {
+            document.getElementById('modalSesion').classList.add('active');
+        }
+
+        function mostrarModalMaestro() {
+            document.getElementById('modalMaestro').classList.add('active');
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+        }
+
+        async function iniciarSesion() {
+            const nombre = document.getElementById('nombreSesion').value;
+            await fetch('/api/sesion/nueva', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre})
+            });
+            cerrarModales();
+            document.getElementById('nombreSesion').value = '';
+        }
+
+        async function cargarMaestro() {
+            const input = document.getElementById('archivoMaestro');
+            if (!input.files[0]) {
+                alert('Selecciona un archivo');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('archivo', input.files[0]);
+
+            const res = await fetch('/api/maestro/cargar', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                cerrarModales();
+                input.value = '';
+            } else {
+                alert(result.error || 'Error al cargar');
+            }
+        }
+
+        function editarItem(id) {
+            const item = todosLosItems.find(i => i.id === id);
+            if (!item) return;
+
+            itemEditando = item;
+            document.getElementById('editEan').value = item.ean;
+            document.getElementById('editDesc').value = item.descripcion;
+            document.getElementById('editCantidad').value = item.cantidad;
+            document.getElementById('editZona').value = item.zonaId;
+            document.getElementById('modalEditar').classList.add('active');
+        }
+
+        async function guardarEdicion() {
+            if (!itemEditando) return;
+
+            const data = {
+                id: itemEditando.id,
+                descripcion: document.getElementById('editDesc').value,
+                cantidad: parseInt(document.getElementById('editCantidad').value),
+                zonaId: document.getElementById('editZona').value
+            };
+
+            await fetch('/api/item/editar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            cerrarModales();
+            itemEditando = null;
+            cargarEstado();
+        }
+
+        function eliminarItem(id) {
+            const item = todosLosItems.find(i => i.id === id);
+            if (!item) return;
+
+            itemEliminando = item;
+            document.getElementById('eliminarEan').textContent = item.ean;
+            document.getElementById('eliminarDesc').textContent = item.descripcion;
+            document.getElementById('modalEliminar').classList.add('active');
+        }
+
+        async function confirmarEliminar() {
+            if (!itemEliminando) return;
+
+            await fetch('/api/item/eliminar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: itemEliminando.id, zonaId: itemEliminando.zonaId})
+            });
+
+            cerrarModales();
+            itemEliminando = null;
+            cargarEstado();
+        }
+
+        // === ZONAS ===
+        function editarZona(zonaId, zonaNombre) {
+            zonaEditando = zonaId;
+            document.getElementById('editZonaNombre').value = zonaNombre;
+            document.getElementById('modalEditarZona').classList.add('active');
+        }
+
+        async function guardarEdicionZona() {
+            if (!zonaEditando) return;
+
+            const nuevoNombre = document.getElementById('editZonaNombre').value.trim();
+            if (!nuevoNombre) {
+                alert('Ingresa un nombre para la zona');
+                return;
+            }
+
+            await fetch('/api/zona/editar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({zonaId: zonaEditando, nuevoNombre})
+            });
+
+            cerrarModales();
+            zonaEditando = null;
+            cargarEstado();
+        }
+
+        function eliminarZona(zonaId, zonaNombre) {
+            zonaEliminando = zonaId;
+            document.getElementById('eliminarZonaNombre').textContent = zonaNombre;
+            document.getElementById('modalEliminarZona').classList.add('active');
+        }
+
+        async function confirmarEliminarZona() {
+            if (!zonaEliminando) return;
+
+            await fetch('/api/zona/eliminar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({zonaId: zonaEliminando})
+            });
+
+            cerrarModales();
+            zonaEliminando = null;
+            cargarEstado();
+        }
+
+        // === STOCK TIENDA Y COMPARACIÓN ===
+        function mostrarModalStock() {
+            document.getElementById('modalStock').classList.add('active');
+        }
+
+        async function cargarStock() {
+            const input = document.getElementById('archivoStock');
+            if (!input.files[0]) {
+                alert('Selecciona un archivo');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('archivo', input.files[0]);
+
+            const res = await fetch('/api/stock-tienda/cargar', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                cerrarModales();
+                input.value = '';
+            } else {
+                alert(result.error || 'Error al cargar');
+            }
+        }
+
+        async function cargarComparacion() {
+            try {
+                const res = await fetch('/api/comparacion');
+                const data = await res.json();
+                comparacionData = data;
+                actualizarPanelComparacion(data);
+            } catch (e) {
+                console.error('Error cargando comparación:', e);
+            }
+        }
+
+        function actualizarPanelComparacion(data) {
+            const panel = document.getElementById('comparacionPanel');
+
+            if (!data || !data.tieneStock || data.totalEsperado === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+
+            panel.style.display = 'block';
+
+            // Progreso
+            const porcentaje = data.progreso || 0;
+            document.getElementById('progresoFill').style.width = Math.min(porcentaje, 100) + '%';
+            document.getElementById('progresoTexto').textContent = porcentaje + '%';
+
+            // Stats
+            document.getElementById('compEsperados').textContent = data.totalEsperado || 0;
+            document.getElementById('compContados').textContent = data.totalEscaneado || 0;
+            document.getElementById('compFaltantes').textContent = data.totalFaltantes || 0;
+            document.getElementById('compSobrantes').textContent = data.totalSobrantes || 0;
+
+            // Costos
+            document.getElementById('costoFaltantes').textContent = formatearMoneda(data.costoFaltante || 0);
+            document.getElementById('costoSobrantes').textContent = formatearMoneda(data.costoSobrante || 0);
+        }
+
+        function formatearMoneda(valor) {
+            return '$' + valor.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function verDetalleFaltantes() {
+            if (!comparacionData || !comparacionData.faltantes) return;
+
+            const lista = document.getElementById('listaFaltantes');
+            const items = comparacionData.faltantes;
+
+            if (items.length === 0) {
+                lista.innerHTML = '<div class="empty">Sin faltantes</div>';
+            } else {
+                lista.innerHTML = `
+                    <table class="items-table" style="font-size:0.8rem;">
+                        <thead>
+                            <tr>
+                                <th>EAN</th>
+                                <th>Descripción</th>
+                                <th>Esperado</th>
+                                <th>Contado</th>
+                                <th>Faltan</th>
+                                <th>Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(i => `
+                                <tr>
+                                    <td class="ean">${i.ean}</td>
+                                    <td>${i.descripcion}</td>
+                                    <td style="text-align:center;">${i.cantidadEsperada}</td>
+                                    <td style="text-align:center;">${i.cantidadEscaneada}</td>
+                                    <td style="text-align:center; color:#ef4444; font-weight:600;">${i.diferencia}</td>
+                                    <td style="color:#ef4444;">${formatearMoneda(i.costoTotal)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            document.getElementById('modalFaltantes').classList.add('active');
+        }
+
+        function verDetalleSobrantes() {
+            if (!comparacionData || !comparacionData.sobrantes) return;
+
+            const lista = document.getElementById('listaSobrantes');
+            const items = comparacionData.sobrantes;
+
+            if (items.length === 0) {
+                lista.innerHTML = '<div class="empty">Sin sobrantes</div>';
+            } else {
+                lista.innerHTML = `
+                    <table class="items-table" style="font-size:0.8rem;">
+                        <thead>
+                            <tr>
+                                <th>EAN</th>
+                                <th>Descripción</th>
+                                <th>Esperado</th>
+                                <th>Contado</th>
+                                <th>Sobran</th>
+                                <th>Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(i => `
+                                <tr>
+                                    <td class="ean">${i.ean}</td>
+                                    <td>${i.descripcion}</td>
+                                    <td style="text-align:center;">${i.cantidadEsperada}</td>
+                                    <td style="text-align:center;">${i.cantidadEscaneada}</td>
+                                    <td style="text-align:center; color:#22c55e; font-weight:600;">+${i.diferencia}</td>
+                                    <td style="color:#22c55e;">${formatearMoneda(i.costoTotal)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            document.getElementById('modalSobrantes').classList.add('active');
+        }
+
+        // Cerrar modales con Escape
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') cerrarModales();
+        });
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            conectar();
+            cargarEstado();
+            cargarComparacion();
+        });
+    </script>
+</body>
+</html>

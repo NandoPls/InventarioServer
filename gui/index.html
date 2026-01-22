@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Servidor de Inventario</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        /* Title bar for dragging */
+        .title-bar {
+            height: 32px;
+            background: white;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-app-region: drag;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .title-bar span {
+            font-size: 12px;
+            color: #888;
+            font-weight: 500;
+        }
+
+        .container {
+            max-width: 100%;
+            padding: 20px;
+            padding-top: 52px;
+            padding-bottom: 60px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 30px 0 20px;
+        }
+
+        .logo {
+            width: 64px;
+            height: 64px;
+            background: #333;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        /* Status Card */
+        .status-card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin: 20px 0;
+            text-align: center;
+            border: 1px solid #eee;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #fee;
+            border-radius: 50px;
+            color: #c00;
+            font-weight: 500;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator.running {
+            background: #efe;
+            color: #060;
+        }
+
+        .status-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .status-indicator.running .dot {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Main Button */
+        .main-button {
+            -webkit-app-region: no-drag;
+            width: 100%;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .main-button.start {
+            background: #22c55e;
+            color: white;
+        }
+
+        .main-button.start:hover {
+            background: #16a34a;
+        }
+
+        .main-button.stop {
+            background: #ef4444;
+            color: white;
+        }
+
+        .main-button.stop:hover {
+            background: #dc2626;
+        }
+
+        .main-button:active {
+            transform: scale(0.98);
+        }
+
+        .main-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Connection Info */
+        .connection-info {
+            display: none;
+            margin-top: 24px;
+            text-align: left;
+        }
+
+        .connection-info.visible {
+            display: block;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            margin-top: 16px;
+        }
+
+        .info-label:first-child {
+            margin-top: 0;
+        }
+
+        .url-box {
+            -webkit-app-region: no-drag;
+            background: #f8f8f8;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .url-box:hover {
+            background: #f0f0f0;
+            border-color: #ccc;
+        }
+
+        .url-box .url {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .url-box .icon {
+            color: #888;
+        }
+
+        /* QR Section */
+        .qr-section {
+            background: #f8f8f8;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .qr-section h3 {
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        #qrcode {
+            display: inline-block;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+
+        #qrcode img, #qrcode canvas {
+            display: block;
+        }
+
+        .qr-instruction {
+            color: #888;
+            font-size: 12px;
+            margin-top: 12px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 16px;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .footer a {
+            -webkit-app-region: no-drag;
+            color: #333;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+        }
+
+        .loading.visible {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: transform 0.3s;
+            z-index: 100;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Bottom bar */
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 36px;
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 11px;
+            color: #888;
+            -webkit-app-region: no-drag;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <span>Servidor de Inventario</span>
+    </div>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="4" rx="1"></rect>
+                    <rect x="3" y="10" width="18" height="4" rx="1"></rect>
+                    <rect x="3" y="16" width="18" height="4" rx="1"></rect>
+                </svg>
+            </div>
+            <h1>Servidor de Inventario</h1>
+            <p class="subtitle">Sistema de escaneo distribuido</p>
+        </header>
+
+        <div class="status-card">
+            <div class="status-indicator" id="statusIndicator">
+                <span class="dot"></span>
+                <span id="statusText">Detenido</span>
+            </div>
+
+            <button class="main-button start" id="mainButton" onclick="toggleServer()">
+                <span class="loading" id="loading"></span>
+                <svg id="btnIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span id="btnText">Iniciar Servidor</span>
+            </button>
+
+            <div class="connection-info" id="connectionInfo">
+                <div class="info-label">Dashboard (PC)</div>
+                <div class="url-box" onclick="openUrl(dashboardUrl)">
+                    <span class="url" id="dashboardUrl">-</span>
+                    <span class="icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </span>
+                </div>
+
+                <div class="info-label">Escáner (celulares)</div>
+                <div class="url-box" onclick="openUrl(scannerUrl)">
+                    <span class="url" id="scannerUrl">-</span>
+                    <span class="icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </span>
+                </div>
+
+                <div class="qr-section">
+                    <h3>Escanea para conectar</h3>
+                    <div id="qrcode"></div>
+                    <p class="qr-instruction">Los celulares deben estar en la misma red WiFi</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Conecta hasta 6 escáneres simultáneos</p>
+            <p style="margin-top: 6px;">
+                <a href="#" onclick="openUrl(dashboardUrl)">Abrir Dashboard</a>
+            </p>
+        </footer>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="bottom-bar">
+        <span>v2.0.0</span>
+        <span>Desarrollado por F. Carrasco</span>
+    </div>
+
+    <!-- QR Code Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        let serverRunning = false;
+        let dashboardUrl = '';
+        let scannerUrl = '';
+
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const mainButton = document.getElementById('mainButton');
+        const btnIcon = document.getElementById('btnIcon');
+        const btnText = document.getElementById('btnText');
+        const loading = document.getElementById('loading');
+        const connectionInfo = document.getElementById('connectionInfo');
+
+        async function toggleServer() {
+            mainButton.disabled = true;
+            loading.classList.add('visible');
+            btnIcon.style.display = 'none';
+
+            if (!serverRunning) {
+                btnText.textContent = 'Iniciando...';
+
+                const result = await ipcRenderer.invoke('start-server');
+
+                if (result.success) {
+                    serverRunning = true;
+                    dashboardUrl = result.dashboardUrl;
+                    scannerUrl = result.scannerUrl;
+
+                    updateUI();
+                    showToast('Servidor iniciado');
+                } else {
+                    showToast('Error: ' + result.error);
+                    resetButton();
+                }
+            } else {
+                btnText.textContent = 'Deteniendo...';
+
+                const result = await ipcRenderer.invoke('stop-server');
+
+                if (result.success) {
+                    serverRunning = false;
+                    updateUI();
+                    showToast('Servidor detenido');
+                } else {
+                    showToast('Error al detener');
+                }
+            }
+
+            mainButton.disabled = false;
+            loading.classList.remove('visible');
+            btnIcon.style.display = 'block';
+        }
+
+        function updateUI() {
+            if (serverRunning) {
+                statusIndicator.classList.add('running');
+                statusText.textContent = 'En ejecución';
+
+                mainButton.classList.remove('start');
+                mainButton.classList.add('stop');
+                btnIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+                btnText.textContent = 'Detener Servidor';
+
+                document.getElementById('dashboardUrl').textContent = dashboardUrl;
+                document.getElementById('scannerUrl').textContent = scannerUrl;
+
+                connectionInfo.classList.add('visible');
+
+                generateQR(scannerUrl);
+            } else {
+                statusIndicator.classList.remove('running');
+                statusText.textContent = 'Detenido';
+
+                mainButton.classList.add('start');
+                mainButton.classList.remove('stop');
+                btnIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+                btnText.textContent = 'Iniciar Servidor';
+
+                connectionInfo.classList.remove('visible');
+
+                document.getElementById('qrcode').innerHTML = '';
+            }
+        }
+
+        function resetButton() {
+            btnIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+            btnText.textContent = 'Iniciar Servidor';
+        }
+
+        function generateQR(url) {
+            const qrContainer = document.getElementById('qrcode');
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR Code">`;
+        }
+
+        function openUrl(url) {
+            if (url) {
+                ipcRenderer.invoke('open-url', url);
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        ipcRenderer.on('server-stopped', () => {
+            serverRunning = false;
+            updateUI();
+        });
+
+        ipcRenderer.invoke('server-status').then(status => {
+            if (status.running) {
+                ipcRenderer.invoke('get-ip').then(ip => {
+                    serverRunning = true;
+                    dashboardUrl = `http://${ip}:3000`;
+                    scannerUrl = `http://${ip}:3000/scanner.html`;
+                    updateUI();
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Escáner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        /* === LOGIN === */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 20px;
+            background: white;
+        }
+        .login-content {
+            max-width: 320px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+        .login-input {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .login-input:focus {
+            outline: none;
+            border-color: #333;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .login-btn:active {
+            background: #555;
+        }
+        .login-status {
+            margin-top: 24px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .login-status .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .login-status .dot.green { background: #22c55e; }
+        .login-status .dot.red { background: #ef4444; }
+
+        /* Back button */
+        .back-btn {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            font-size: 20px;
+            color: #999;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .back-btn:active {
+            color: #333;
+        }
+
+        /* === ZONA SELECTION === */
+        .zona-screen {
+            min-height: 100vh;
+            background: white;
+            padding: 20px;
+            padding-top: 50px;
+            display: none;
+            position: relative;
+        }
+        .zona-header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 20px;
+        }
+        .zona-welcome {
+            font-size: 14px;
+            color: #666;
+        }
+        .zona-welcome strong {
+            color: #333;
+        }
+        .zona-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .zona-list {
+            margin-bottom: 20px;
+        }
+        .zona-item {
+            background: #f8f8f8;
+            border: 2px solid #eee;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .zona-item:active {
+            background: #333;
+            border-color: #333;
+            color: white;
+        }
+        .zona-item:active .zona-item-count {
+            color: #ccc;
+        }
+        .zona-item-name {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .zona-item-count {
+            font-size: 13px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .zona-create {
+            display: flex;
+            gap: 10px;
+        }
+        .zona-create input {
+            flex: 1;
+            padding: 14px;
+            font-size: 15px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+        }
+        .zona-create input:focus {
+            outline: none;
+            border-color: #333;
+        }
+        .zona-create button {
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .zona-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        /* === SCANNER === */
+        .scanner-screen {
+            min-height: 100vh;
+            display: none;
+            flex-direction: column;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            background: white;
+            padding: 12px 16px;
+            padding-left: 44px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            position: relative;
+        }
+        .top-bar .back-btn {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            background: #333;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .user-info {
+            font-size: 13px;
+        }
+        .user-name {
+            font-weight: 600;
+        }
+        .user-status {
+            color: #22c55e;
+            font-size: 12px;
+        }
+        .user-status.offline {
+            color: #ef4444;
+        }
+        .scan-count {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        /* Zona Bar */
+        .zona-bar {
+            background: #333;
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .zona-bar-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .zona-bar-change {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        /* Main Input Area */
+        .input-area {
+            background: white;
+            padding: 16px;
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+        .ean-input {
+            flex: 1;
+            padding: 18px;
+            font-size: 20px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: #fafafa;
+        }
+        .ean-input:focus {
+            outline: none;
+            border-color: #333;
+            background: white;
+        }
+        .ok-btn {
+            padding: 18px 28px;
+            font-size: 18px;
+            font-weight: 700;
+            background: #22c55e;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .ok-btn:active {
+            background: #16a34a;
+        }
+
+        /* Last Scan */
+        .last-scan {
+            background: white;
+            border-top: 1px solid #eee;
+            padding: 14px 16px;
+            display: none;
+        }
+        .last-scan.visible {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .last-scan-info {
+            flex: 1;
+        }
+        .last-scan-ean {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .last-scan-desc {
+            font-size: 13px;
+            color: #666;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 240px;
+        }
+        .last-scan-qty {
+            font-size: 24px;
+            font-weight: 700;
+            color: #22c55e;
+        }
+        .last-scan.not-found .last-scan-qty {
+            color: #ef4444;
+        }
+
+        /* Action Buttons */
+        .action-btns {
+            display: flex;
+            gap: 10px;
+            padding: 0 16px 16px;
+            background: white;
+        }
+        .action-btn {
+            flex: 1;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .action-btn:active {
+            background: #f5f5f5;
+        }
+
+        /* History */
+        .history-panel {
+            flex: 1;
+            background: #f5f5f5;
+            display: none;
+            flex-direction: column;
+        }
+        .history-panel.visible {
+            display: flex;
+        }
+        .history-header {
+            padding: 12px 16px;
+            background: white;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            color: #666;
+        }
+        .history-header strong {
+            color: #333;
+        }
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .history-item {
+            background: white;
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .history-item-ean {
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .history-item-qty {
+            font-weight: 600;
+            color: #22c55e;
+        }
+        .history-empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            padding: 20px;
+        }
+        .modal.active {
+            display: flex;
+            align-items: flex-start;
+            padding-top: 60px;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 16px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: #f5f5f5;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .modal-body {
+            padding: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-content">
+            <div class="login-title">Escáner de Inventario</div>
+            <div class="login-subtitle">Ingresa tu nombre para comenzar</div>
+            <input type="text" class="login-input" id="inputNombre" placeholder="Tu nombre" autocomplete="off">
+            <button class="login-btn" onclick="iniciarSesion()">ENTRAR</button>
+            <div class="login-status">
+                <span class="dot red" id="loginDot"></span>
+                <span id="loginStatusText">Conectando...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZONA SELECTION -->
+    <div class="zona-screen" id="zonaScreen">
+        <button class="back-btn" onclick="volverALogin()">‹</button>
+        <div class="zona-header">
+            <div class="zona-welcome">Hola, <strong id="welcomeName">Usuario</strong></div>
+            <div class="zona-title">Selecciona tu zona</div>
+        </div>
+        <div class="zona-list" id="zonaList">
+            <div class="zona-empty">Cargando...</div>
+        </div>
+        <div class="zona-create">
+            <input type="text" id="inputNuevaZona" placeholder="Nueva zona...">
+            <button onclick="crearZona()">CREAR</button>
+        </div>
+    </div>
+
+    <!-- SCANNER -->
+    <div class="scanner-screen" id="scannerScreen">
+        <div class="top-bar">
+            <button class="back-btn" onclick="volverAZonas()">‹</button>
+            <div class="top-bar-left">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <div class="user-info">
+                    <div class="user-name" id="userName">Usuario</div>
+                    <div class="user-status" id="userStatus">Conectado</div>
+                </div>
+            </div>
+            <div class="scan-count" id="scanCount">0</div>
+        </div>
+
+        <div class="zona-bar" onclick="abrirModalZonas()">
+            <div class="zona-bar-name" id="zonaBarName">Sin zona</div>
+            <div class="zona-bar-change">Cambiar ▸</div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-row">
+                <input type="text" class="ean-input" id="inputEan" placeholder="Código EAN" inputmode="numeric" autocomplete="off">
+                <button class="ok-btn" onclick="enviarEscaneo()">OK</button>
+            </div>
+        </div>
+
+        <div class="last-scan" id="lastScan">
+            <div class="last-scan-info">
+                <div class="last-scan-ean" id="lastEan">-</div>
+                <div class="last-scan-desc" id="lastDesc">-</div>
+            </div>
+            <div class="last-scan-qty" id="lastQty">x1</div>
+        </div>
+
+        <div class="action-btns">
+            <button class="action-btn" onclick="toggleHistorial()">HISTORIAL</button>
+            <button class="action-btn" onclick="abrirModalZonas()">CAMBIAR ZONA</button>
+        </div>
+
+        <div class="history-panel" id="historyPanel">
+            <div class="history-header">
+                Zona: <strong id="historyZona">-</strong> · <span id="historyCount">0</span> items
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="history-empty">Sin escaneos</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ZONAS -->
+    <div class="modal" id="modalZonas">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Cambiar Zona</div>
+                <button class="modal-close" onclick="cerrarModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="zona-create" style="margin-bottom:16px;">
+                    <input type="text" id="inputNuevaZonaModal" placeholder="Nueva zona...">
+                    <button onclick="crearZonaModal()">CREAR</button>
+                </div>
+                <div id="modalZonaList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === AUDIO BEEP ===
+        let audioContext = null;
+
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBeep(success = true) {
+            try {
+                initAudio();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                if (success) {
+                    // Beep agudo - encontrado en maestro
+                    oscillator.frequency.value = 1800;
+                    oscillator.type = 'sine';
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.1);
+                } else {
+                    // Beep grave doble - NO encontrado en maestro
+                    oscillator.frequency.value = 400;
+                    oscillator.type = 'square';
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.15);
+
+                    // Segundo beep
+                    setTimeout(() => {
+                        const osc2 = audioContext.createOscillator();
+                        const gain2 = audioContext.createGain();
+                        osc2.connect(gain2);
+                        gain2.connect(audioContext.destination);
+                        osc2.frequency.value = 300;
+                        osc2.type = 'square';
+                        gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
+                        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+                        osc2.start(audioContext.currentTime);
+                        osc2.stop(audioContext.currentTime + 0.15);
+                    }, 150);
+                }
+            } catch(e) {
+                console.log('Audio not available');
+            }
+        }
+
+        // === STATE ===
+        let ws;
+        let escanerId = null;
+        let nombreUsuario = '';
+        let zonaActual = null;
+        let zonaNombre = null;
+        let conectado = false;
+        let historial = [];
+        let colaPendientes = [];
+        let zonasDisponibles = [];
+        let totalEscaneos = 0;
+        let mostrandoHistorial = false;
+
+        // === WEBSOCKET ===
+        function conectar() {
+            const wsUrl = `ws://${window.location.host}`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+            } catch(e) {
+                actualizarConexion(false);
+                return;
+            }
+
+            ws.onopen = () => {
+                conectado = true;
+                actualizarConexion(true);
+                if (nombreUsuario) {
+                    ws.send(JSON.stringify({tipo: 'registrar_escaner', data: {nombre: nombreUsuario}}));
+                }
+                sincronizarPendientes();
+            };
+
+            ws.onclose = () => {
+                conectado = false;
+                actualizarConexion(false);
+                setTimeout(conectar, 2000);
+            };
+
+            ws.onerror = () => {
+                conectado = false;
+                actualizarConexion(false);
+            };
+
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                manejarMensaje(msg);
+            };
+        }
+
+        function manejarMensaje(msg) {
+            switch(msg.tipo) {
+                case 'registrado':
+                    escanerId = msg.data.id;
+                    break;
+
+                case 'zona_asignada':
+                    zonaActual = msg.data.zonaId;
+                    zonaNombre = msg.data.zonaNombre;
+                    actualizarZonaUI();
+                    cerrarModal();
+                    if (document.getElementById('zonaScreen').style.display !== 'none') {
+                        irAlScanner();
+                    } else if (mostrandoHistorial) {
+                        renderHistorial();
+                    }
+                    break;
+
+                case 'escaneo_ok':
+                    const item = msg.data.item;
+                    totalEscaneos = msg.data.totalEscaner;
+                    mostrarUltimoEscaneo(item);
+                    agregarHistorial(item);
+                    document.getElementById('scanCount').textContent = totalEscaneos;
+                    playBeep(item.existeEnMaestro);
+                    if (navigator.vibrate) {
+                        navigator.vibrate(item.existeEnMaestro ? 50 : [100, 50, 100]);
+                    }
+                    break;
+
+                case 'lista_zonas':
+                case 'estado_inicial':
+                    zonasDisponibles = msg.data.zonas || [];
+                    actualizarListaZonas();
+                    break;
+
+                case 'error':
+                    alert(msg.mensaje);
+                    break;
+            }
+        }
+
+        function actualizarConexion(ok) {
+            const dot = document.getElementById('loginDot');
+            const text = document.getElementById('loginStatusText');
+            const status = document.getElementById('userStatus');
+
+            if (dot) {
+                dot.className = ok ? 'dot green' : 'dot red';
+            }
+            if (text) {
+                text.textContent = ok ? 'Conectado al servidor' : 'Sin conexión';
+            }
+            if (status) {
+                status.textContent = ok ? 'Conectado' : 'Sin conexión';
+                status.className = ok ? 'user-status' : 'user-status offline';
+            }
+        }
+
+        // === UI FLOW ===
+        function iniciarSesion() {
+            nombreUsuario = document.getElementById('inputNombre').value.trim();
+            if (!nombreUsuario) {
+                alert('Ingresa tu nombre');
+                return;
+            }
+
+            // Init audio on user interaction
+            initAudio();
+
+            document.getElementById('welcomeName').textContent = nombreUsuario;
+            document.getElementById('userName').textContent = nombreUsuario;
+            document.getElementById('userAvatar').textContent = nombreUsuario.charAt(0).toUpperCase();
+
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('zonaScreen').style.display = 'block';
+
+            if (conectado) {
+                ws.send(JSON.stringify({tipo: 'registrar_escaner', data: {nombre: nombreUsuario}}));
+            }
+
+            document.getElementById('inputNuevaZona').focus();
+        }
+
+        function irAlScanner() {
+            document.getElementById('zonaScreen').style.display = 'none';
+            document.getElementById('scannerScreen').style.display = 'flex';
+            document.getElementById('inputEan').focus();
+            historial = [];
+        }
+
+        function volverALogin() {
+            document.getElementById('zonaScreen').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('inputNombre').focus();
+        }
+
+        function volverAZonas() {
+            document.getElementById('scannerScreen').style.display = 'none';
+            document.getElementById('zonaScreen').style.display = 'block';
+            if (conectado) {
+                ws.send(JSON.stringify({tipo: 'obtener_zonas'}));
+            }
+        }
+
+        function actualizarZonaUI() {
+            document.getElementById('zonaBarName').textContent = zonaNombre || 'Sin zona';
+            document.getElementById('historyZona').textContent = zonaNombre || '-';
+        }
+
+        function actualizarListaZonas() {
+            // Zona selection screen
+            const list = document.getElementById('zonaList');
+            if (zonasDisponibles.length === 0) {
+                list.innerHTML = '<div class="zona-empty">No tienes zonas.<br>Crea una nueva abajo.</div>';
+            } else {
+                list.innerHTML = zonasDisponibles.map(z => `
+                    <div class="zona-item" onclick="seleccionarZona('${z.id}', '${z.nombre}')">
+                        <div class="zona-item-name">${z.nombre}</div>
+                        <div class="zona-item-count">${z.totalItems || 0} items escaneados</div>
+                    </div>
+                `).join('');
+            }
+
+            // Modal list
+            const modalList = document.getElementById('modalZonaList');
+            if (modalList) {
+                if (zonasDisponibles.length === 0) {
+                    modalList.innerHTML = '<div class="zona-empty">No hay zonas</div>';
+                } else {
+                    modalList.innerHTML = zonasDisponibles.map(z => `
+                        <div class="zona-item ${z.id === zonaActual ? 'current' : ''}" onclick="seleccionarZona('${z.id}', '${z.nombre}')" style="${z.id === zonaActual ? 'border-color:#333;background:#f0f0f0;' : ''}">
+                            <div class="zona-item-name">${z.nombre} ${z.id === zonaActual ? '✓' : ''}</div>
+                            <div class="zona-item-count">${z.totalItems || 0} items</div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+
+        function seleccionarZona(id, nombre) {
+            if (!escanerId) {
+                alert('Espera, conectando...');
+                return;
+            }
+            ws.send(JSON.stringify({
+                tipo: 'asignar_zona',
+                data: {escanerId, zonaId: id, zonaNombre: nombre}
+            }));
+        }
+
+        function crearZona() {
+            const input = document.getElementById('inputNuevaZona');
+            const nombre = input.value.trim();
+            if (!nombre) return;
+            if (!escanerId) {
+                alert('Espera, conectando...');
+                return;
+            }
+            const id = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString(36);
+            ws.send(JSON.stringify({
+                tipo: 'asignar_zona',
+                data: {escanerId, zonaId: id, zonaNombre: nombre}
+            }));
+            input.value = '';
+        }
+
+        function crearZonaModal() {
+            const input = document.getElementById('inputNuevaZonaModal');
+            const nombre = input.value.trim();
+            if (!nombre) return;
+            if (!escanerId) {
+                alert('Espera, conectando...');
+                return;
+            }
+            const id = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString(36);
+            ws.send(JSON.stringify({
+                tipo: 'asignar_zona',
+                data: {escanerId, zonaId: id, zonaNombre: nombre}
+            }));
+            input.value = '';
+        }
+
+        // === SCANNING ===
+        function enviarEscaneo() {
+            const input = document.getElementById('inputEan');
+            const ean = input.value.trim();
+            if (!ean) return;
+
+            if (!zonaActual) {
+                alert('Primero selecciona una zona');
+                return;
+            }
+
+            if (!conectado || !escanerId) {
+                guardarOffline(ean);
+            } else {
+                ws.send(JSON.stringify({
+                    tipo: 'escanear',
+                    data: {escanerId, ean}
+                }));
+            }
+
+            input.value = '';
+            input.focus();
+        }
+
+        function mostrarUltimoEscaneo(item) {
+            const el = document.getElementById('lastScan');
+            el.classList.add('visible');
+            el.className = 'last-scan visible' + (item.existeEnMaestro ? '' : ' not-found');
+            document.getElementById('lastEan').textContent = item.ean;
+            document.getElementById('lastDesc').textContent = item.descripcion;
+            document.getElementById('lastQty').textContent = 'x' + item.cantidad;
+        }
+
+        function agregarHistorial(item) {
+            item.zonaId = zonaActual;
+            item.zonaNombre = zonaNombre;
+
+            const existe = historial.find(h => h.ean === item.ean && h.zonaId === zonaActual);
+            if (existe) {
+                existe.cantidad = item.cantidad;
+            } else {
+                historial.unshift(item);
+            }
+            if (mostrandoHistorial) renderHistorial();
+        }
+
+        function toggleHistorial() {
+            mostrandoHistorial = !mostrandoHistorial;
+            const panel = document.getElementById('historyPanel');
+            panel.classList.toggle('visible', mostrandoHistorial);
+            if (mostrandoHistorial) renderHistorial();
+        }
+
+        function renderHistorial() {
+            const list = document.getElementById('historyList');
+            const count = document.getElementById('historyCount');
+            const filtrado = historial.filter(h => h.zonaId === zonaActual);
+
+            count.textContent = filtrado.length;
+
+            if (filtrado.length === 0) {
+                list.innerHTML = '<div class="history-empty">Sin escaneos en esta zona</div>';
+            } else {
+                list.innerHTML = filtrado.map(h => `
+                    <div class="history-item">
+                        <div class="history-item-ean">${h.ean}</div>
+                        <div class="history-item-qty">x${h.cantidad}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // === MODAL ===
+        function abrirModalZonas() {
+            if (conectado) {
+                ws.send(JSON.stringify({tipo: 'obtener_zonas'}));
+            }
+            actualizarListaZonas();
+            document.getElementById('modalZonas').classList.add('active');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalZonas').classList.remove('active');
+            document.getElementById('inputEan').focus();
+        }
+
+        // === OFFLINE ===
+        function guardarOffline(ean) {
+            colaPendientes.push({
+                id: Date.now().toString(36),
+                ean,
+                zonaId: zonaActual,
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('colaPendientes', JSON.stringify(colaPendientes));
+            if (navigator.vibrate) navigator.vibrate([50,50,50]);
+        }
+
+        function sincronizarPendientes() {
+            if (!conectado || !escanerId || colaPendientes.length === 0) return;
+            const pendientes = [...colaPendientes];
+            pendientes.forEach((p, i) => {
+                setTimeout(() => {
+                    ws.send(JSON.stringify({
+                        tipo: 'escanear',
+                        data: {escanerId, ean: p.ean}
+                    }));
+                    colaPendientes = colaPendientes.filter(x => x.id !== p.id);
+                    localStorage.setItem('colaPendientes', JSON.stringify(colaPendientes));
+                }, i * 100);
+            });
+        }
+
+        // === INIT ===
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('nombreUsuario');
+            if (savedName) document.getElementById('inputNombre').value = savedName;
+
+            const savedQueue = localStorage.getItem('colaPendientes');
+            if (savedQueue) colaPendientes = JSON.parse(savedQueue);
+
+            conectar();
+        });
+
+        // === RECONEXIÓN AUTOMÁTICA AL VOLVER A LA PESTAÑA ===
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                // Si la página vuelve a ser visible, verificar conexión
+                if (!conectado || !ws || ws.readyState !== WebSocket.OPEN) {
+                    console.log('Reconectando al volver...');
+                    conectar();
+                }
+            }
+        });
+
+        // También reconectar cuando la ventana recupera el foco
+        window.addEventListener('focus', () => {
+            if (!conectado || !ws || ws.readyState !== WebSocket.OPEN) {
+                console.log('Reconectando al recuperar foco...');
+                conectar();
+            }
+        });
+
+        // Detectar cuando el teléfono "despierta"
+        window.addEventListener('online', () => {
+            if (!conectado || !ws || ws.readyState !== WebSocket.OPEN) {
+                console.log('Reconectando al recuperar conexión...');
+                conectar();
+            }
+        });
+
+        // Enter handlers
+        document.getElementById('inputNombre')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') iniciarSesion();
+        });
+        document.getElementById('inputNuevaZona')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') crearZona();
+        });
+        document.getElementById('inputNuevaZonaModal')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') crearZonaModal();
+        });
+        document.getElementById('inputEan')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') enviarEscaneo();
+        });
+
+        // Save name on change
+        document.getElementById('inputNombre')?.addEventListener('blur', () => {
+            const name = document.getElementById('inputNombre').value.trim();
+            if (name) localStorage.setItem('nombreUsuario', name);
+        });
+    </script>
+</body>
+</html>
