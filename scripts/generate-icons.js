@@ -29,6 +29,7 @@ try {
 const sharp = require('sharp');
 
 async function generateIcons() {
+    const icoSizes = [16, 32, 48, 256];
     const sizes = [16, 32, 48, 64, 128, 256, 512, 1024];
 
     // Generar PNGs de diferentes tamaños
@@ -48,14 +49,15 @@ async function generateIcons() {
 
     console.log('✓ icon.png generado');
 
-    // Para Windows .ico necesitamos png2ico o similar
-    // Por ahora copiamos el PNG de 256x256
-    console.log('\nPara generar icon.ico (Windows):');
-    console.log('  1. Ve a https://icoconvert.com/');
-    console.log('  2. Sube build/icon.png');
-    console.log('  3. Descarga y guarda como build/icon.ico\n');
+    // Generar ICO para Windows usando dynamic import (ESM module)
+    console.log('Generando ICO para Windows...');
+    const pngToIco = (await import('png-to-ico')).default;
+    const icoPngs = icoSizes.map(size => path.join(buildDir, `icon_${size}.png`));
+    const icoBuffer = await pngToIco(icoPngs);
+    fs.writeFileSync(path.join(buildDir, 'icon.ico'), icoBuffer);
+    console.log('✓ icon.ico generado');
 
-    console.log('Para generar icon.icns (macOS):');
+    console.log('\nPara generar icon.icns (macOS):');
     console.log('  1. Ve a https://cloudconvert.com/png-to-icns');
     console.log('  2. Sube build/icon.png');
     console.log('  3. Descarga y guarda como build/icon.icns\n');
@@ -69,7 +71,6 @@ async function generateIcons() {
     }
 
     console.log('✓ Iconos base generados en build/');
-    console.log('\nNota: GitHub Actions generará los iconos automáticamente si faltan.');
 }
 
 generateIcons().catch(console.error);
