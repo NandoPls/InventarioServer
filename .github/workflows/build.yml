@@ -41,9 +41,7 @@ jobs:
         run: node scripts/ensure-icons.js
 
       - name: Build para ${{ matrix.platform }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:${{ matrix.platform }}
+        run: npx electron-builder --${{ matrix.platform }} --publish never
 
       - name: Subir artefactos Windows
         if: matrix.platform == 'win'
@@ -52,6 +50,8 @@ jobs:
           name: windows-build
           path: |
             dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
           if-no-files-found: ignore
 
       - name: Subir artefactos macOS
@@ -61,6 +61,8 @@ jobs:
           name: macos-build
           path: |
             dist/*.dmg
+            dist/*.blockmap
+            dist/latest-mac.yml
           if-no-files-found: ignore
 
       - name: Subir artefactos Linux
@@ -70,6 +72,7 @@ jobs:
           name: linux-build
           path: |
             dist/*.AppImage
+            dist/latest-linux.yml
           if-no-files-found: ignore
 
   release:
