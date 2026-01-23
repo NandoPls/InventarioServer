@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -32,9 +33,6 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
-
-      - name: Instalar sharp para iconos
-        run: npm install sharp --save-dev
 
       - name: Generar iconos
         run: node scripts/ensure-icons.js
