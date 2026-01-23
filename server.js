@@ -7,6 +7,27 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
+const os = require('os');
+
+// Determinar carpeta de datos (fuera del ASAR en producción)
+function getDataDir() {
+    // Si estamos en un ASAR, usar carpeta en el home del usuario
+    if (__dirname.includes('.asar')) {
+        const dataDir = path.join(os.homedir(), '.inventario-server', 'data');
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        return dataDir;
+    }
+    // En desarrollo, usar carpeta local
+    const dataDir = path.join(__dirname, 'data');
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return dataDir;
+}
+
+const DATA_DIR = getDataDir();
 
 // ============================================
 // SISTEMA DE AUTO-UPDATE
@@ -66,7 +87,11 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Configurar multer para subida de archivos
-const upload = multer({ dest: 'data/uploads/' });
+const uploadsDir = path.join(DATA_DIR, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+const upload = multer({ dest: uploadsDir });
 
 // ============================================
 // ESTADO GLOBAL
@@ -82,7 +107,7 @@ let estado = {
 };
 
 // Cargar estado guardado si existe
-const estadoPath = path.join(__dirname, 'data', 'estado.json');
+const estadoPath = path.join(DATA_DIR, 'estado.json');
 if (fs.existsSync(estadoPath)) {
     try {
         const saved = JSON.parse(fs.readFileSync(estadoPath, 'utf8'));
