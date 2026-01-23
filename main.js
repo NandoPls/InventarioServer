@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
-const { spawn, exec } = require('child_process');
+const { exec } = require('child_process');
 const os = require('os');
 
 let mainWindow;
@@ -51,20 +51,13 @@ ipcMain.handle('start-server', async () => {
     }
 
     return new Promise((resolve) => {
-        const serverPath = path.join(__dirname, 'server.js');
-        serverProcess = spawn('node', [serverPath], {
-            cwd: __dirname,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+        try {
+            // Ejecutar servidor directamente en el proceso de Electron
+            require('./server.js');
+            serverProcess = true; // Marcar como activo
 
-        let started = false;
-
-        serverProcess.stdout.on('data', (data) => {
-            const output = data.toString();
-            console.log('Server:', output);
-
-            if (!started && output.includes('SERVIDOR DE INVENTARIO INICIADO')) {
-                started = true;
+            // Esperar un momento para que el servidor inicie
+            setTimeout(() => {
                 const ip = getLocalIP();
                 resolve({
                     success: true,
@@ -72,58 +65,22 @@ ipcMain.handle('start-server', async () => {
                     dashboardUrl: `http://${ip}:3000`,
                     scannerUrl: `http://${ip}:3000/scanner.html`
                 });
-            }
-
-            // Enviar output a la ventana
-            if (mainWindow) {
-                mainWindow.webContents.send('server-log', output);
-            }
-        });
-
-        serverProcess.stderr.on('data', (data) => {
-            console.error('Server Error:', data.toString());
-            if (!started) {
-                resolve({ success: false, error: data.toString() });
-            }
-        });
-
-        serverProcess.on('error', (err) => {
+            }, 1000);
+        } catch (err) {
             console.error('Failed to start server:', err);
             serverProcess = null;
-            if (!started) {
-                resolve({ success: false, error: err.message });
-            }
-        });
-
-        serverProcess.on('close', (code) => {
-            console.log('Server closed with code:', code);
-            serverProcess = null;
-            if (mainWindow) {
-                mainWindow.webContents.send('server-stopped');
-            }
-        });
-
-        // Timeout por si no inicia
-        setTimeout(() => {
-            if (!started) {
-                const ip = getLocalIP();
-                resolve({
-                    success: true,
-                    ip: ip,
-                    dashboardUrl: `http://${ip}:3000`,
-                    scannerUrl: `http://${ip}:3000/scanner.html`
-                });
-            }
-        }, 3000);
+            resolve({ success: false, error: err.message });
+        }
     });
 });
 
 // Detener servidor
 ipcMain.handle('stop-server', async () => {
     if (serverProcess) {
-        serverProcess.kill();
+        // El servidor corre en el mismo proceso, no se puede detener individualmente
+        // Solo marcamos como no activo
         serverProcess = null;
-        return { success: true };
+        return { success: true, message: 'Para detener completamente, cierra la aplicación' };
     }
     return { success: false, error: 'El servidor no está corriendo' };
 });
@@ -223,9 +180,6 @@ ipcMain.handle('hotspot-detener', async () => {
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-    if (serverProcess) {
-        serverProcess.kill();
-    }
     app.quit();
 });
 
@@ -237,9 +191,6 @@ app.on('activate', () => {
 
 // Cleanup al cerrar
 app.on('before-quit', () => {
-    if (serverProcess) {
-        serverProcess.kill();
-    }
     // Detener hotspot si estaba activo
     if (hotspotActivo && process.platform === 'win32') {
         exec('netsh wlan stop hostednetwork');
