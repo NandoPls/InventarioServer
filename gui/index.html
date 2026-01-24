@@ -570,12 +570,32 @@
             cursor: pointer;
             transition: all 0.2s;
             margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         .login-btn:hover {
             background: #2d5a87;
         }
         .login-btn:active {
             transform: scale(0.98);
+        }
+        .login-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .login-spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .login-spinner.visible {
+            display: inline-block;
         }
         .login-error {
             color: #ef4444;
@@ -616,7 +636,10 @@
                 <input type="password" id="loginPass" placeholder="Tu contraseña">
             </div>
 
-            <button class="login-btn" onclick="doLogin()">Ingresar</button>
+            <button class="login-btn" id="loginBtn" onclick="doLogin()">
+                <span class="login-spinner" id="loginSpinner"></span>
+                <span id="loginBtnText">Ingresar</span>
+            </button>
 
             <p class="login-error" id="loginError">Usuario o contraseña incorrectos</p>
 
@@ -769,27 +792,52 @@
             const userInput = document.getElementById('loginUser');
             const passInput = document.getElementById('loginPass');
             const errorMsg = document.getElementById('loginError');
+            const loginBtn = document.getElementById('loginBtn');
+            const spinner = document.getElementById('loginSpinner');
+            const btnText = document.getElementById('loginBtnText');
 
             const user = userInput.value.trim();
             const pass = passInput.value;
 
-            // Verificar credenciales
-            if (user === CREDENCIALES.usuario && pass === CREDENCIALES.password) {
-                // Login exitoso
-                document.getElementById('loginOverlay').classList.add('hidden');
-                // Guardar sesión
-                localStorage.setItem('inventario_session', Date.now().toString());
-            } else {
-                // Error
-                errorMsg.classList.add('visible');
-                userInput.classList.add('error');
-                passInput.classList.add('error');
+            // Ocultar error previo
+            errorMsg.classList.remove('visible');
 
-                setTimeout(() => {
-                    userInput.classList.remove('error');
-                    passInput.classList.remove('error');
-                }, 400);
-            }
+            // Mostrar loading
+            loginBtn.disabled = true;
+            spinner.classList.add('visible');
+            btnText.textContent = 'Verificando...';
+            userInput.disabled = true;
+            passInput.disabled = true;
+
+            // Simular verificación en servidor (3 segundos)
+            setTimeout(() => {
+                // Verificar credenciales
+                if (user === CREDENCIALES.usuario && pass === CREDENCIALES.password) {
+                    // Login exitoso
+                    btnText.textContent = 'Acceso concedido';
+                    setTimeout(() => {
+                        document.getElementById('loginOverlay').classList.add('hidden');
+                        // Guardar sesión
+                        localStorage.setItem('inventario_session', Date.now().toString());
+                    }, 500);
+                } else {
+                    // Error
+                    spinner.classList.remove('visible');
+                    btnText.textContent = 'Ingresar';
+                    loginBtn.disabled = false;
+                    userInput.disabled = false;
+                    passInput.disabled = false;
+
+                    errorMsg.classList.add('visible');
+                    userInput.classList.add('error');
+                    passInput.classList.add('error');
+
+                    setTimeout(() => {
+                        userInput.classList.remove('error');
+                        passInput.classList.remove('error');
+                    }, 400);
+                }
+            }, 3000);
         }
 
         // Enter para login
