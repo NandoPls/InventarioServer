@@ -84,7 +84,7 @@ const PORT = 3000;
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Configurar multer para subida de archivos
 const uploadsDir = path.join(DATA_DIR, 'uploads');
