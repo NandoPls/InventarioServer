@@ -30,13 +30,17 @@ function getDataDir() {
 const DATA_DIR = getDataDir();
 
 // ============================================
-// SISTEMA DE AUTO-UPDATE
+// SISTEMA DE AUTO-UPDATE (solo en modo desarrollo)
 // ============================================
 let updateDisponible = false;
 let versionLocal = '';
 let versionRemota = '';
+const esProduccion = __dirname.includes('.asar');
 
 function verificarActualizaciones() {
+    // No verificar actualizaciones git en modo producción (ASAR)
+    if (esProduccion) return;
+
     exec('git fetch origin main', { cwd: __dirname }, (err) => {
         if (err) {
             console.log('Error al verificar actualizaciones:', err.message);
@@ -71,10 +75,11 @@ function verificarActualizaciones() {
     });
 }
 
-// Verificar cada 2 minutos
-setInterval(verificarActualizaciones, 2 * 60 * 1000);
-// Verificar al iniciar (después de 10 segundos)
-setTimeout(verificarActualizaciones, 10000);
+// Solo verificar actualizaciones en modo desarrollo
+if (!esProduccion) {
+    setInterval(verificarActualizaciones, 2 * 60 * 1000);
+    setTimeout(verificarActualizaciones, 10000);
+}
 
 const app = express();
 const server = http.createServer(app);
