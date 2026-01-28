@@ -1,6 +1,6 @@
 {
   "name": "inventario-server",
-  "version": "2.0.1",
+  "version": "2.0.7",
   "description": "Sistema de inventario con escáneres móviles",
   "main": "main.js",
   "author": "NandoPls",
@@ -94,6 +94,7 @@
     }
   },
   "dependencies": {
+    "electron-updater": "^6.7.3",
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
     "uuid": "^9.0.0",

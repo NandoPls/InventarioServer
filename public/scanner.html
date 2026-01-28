@@ -247,6 +247,30 @@
         .user-status.offline {
             color: #ef4444;
         }
+
+        /* Barra de pendientes offline */
+        .offline-bar {
+            display: none;
+            background: #fef3c7;
+            color: #92400e;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            text-align: center;
+            border-bottom: 1px solid #fcd34d;
+        }
+        .offline-bar.visible {
+            display: block;
+        }
+        .offline-bar.syncing {
+            background: #dbeafe;
+            color: #1e40af;
+            border-bottom-color: #93c5fd;
+        }
+        .offline-count {
+            font-weight: 700;
+            font-size: 15px;
+        }
         .scan-count {
             font-size: 28px;
             font-weight: 700;
@@ -516,6 +540,11 @@
             <div class="zona-bar-change">Cambiar ▸</div>
         </div>
 
+        <!-- Barra de items pendientes offline -->
+        <div class="offline-bar" id="offlineBar">
+            <span class="offline-count" id="pendientesCount">0</span> items guardados sin conexión
+        </div>
+
         <div class="input-area">
             <div class="input-row">
                 <input type="text" class="ean-input" id="inputEan" placeholder="Código EAN" inputmode="numeric" autocomplete="off">
@@ -725,6 +754,9 @@
                 status.textContent = ok ? 'Conectado' : 'Sin conexión';
                 status.className = ok ? 'user-status' : 'user-status offline';
             }
+
+            // Actualizar barra de pendientes
+            actualizarBarraPendientes();
         }
 
         // === UI FLOW ===
@@ -946,21 +978,58 @@
                 timestamp: new Date().toISOString()
             });
             localStorage.setItem('colaPendientes', JSON.stringify(colaPendientes));
-            if (navigator.vibrate) navigator.vibrate([50,50,50]);
+            actualizarBarraPendientes();
+
+            // Feedback visual de guardado offline
+            const lastScan = document.getElementById('lastScan');
+            lastScan.classList.add('visible');
+            lastScan.className = 'last-scan visible not-found';
+            document.getElementById('lastEan').textContent = ean;
+            document.getElementById('lastDesc').textContent = 'Guardado offline - sincronizará al conectar';
+            document.getElementById('lastQty').textContent = '⏳';
+
+            if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+        }
+
+        function actualizarBarraPendientes() {
+            const bar = document.getElementById('offlineBar');
+            const count = document.getElementById('pendientesCount');
+
+            if (colaPendientes.length > 0) {
+                bar.classList.add('visible');
+                count.textContent = colaPendientes.length;
+
+                if (conectado) {
+                    bar.classList.add('syncing');
+                    bar.innerHTML = '<span class="offline-count">' + colaPendientes.length + '</span> items sincronizando...';
+                } else {
+                    bar.classList.remove('syncing');
+                    bar.innerHTML = '<span class="offline-count">' + colaPendientes.length + '</span> items guardados sin conexión';
+                }
+            } else {
+                bar.classList.remove('visible');
+                bar.classList.remove('syncing');
+            }
         }
 
         function sincronizarPendientes() {
             if (!conectado || !escanerId || colaPendientes.length === 0) return;
+
+            actualizarBarraPendientes();
             const pendientes = [...colaPendientes];
+
             pendientes.forEach((p, i) => {
                 setTimeout(() => {
-                    ws.send(JSON.stringify({
-                        tipo: 'escanear',
-                        data: {escanerId, ean: p.ean}
-                    }));
-                    colaPendientes = colaPendientes.filter(x => x.id !== p.id);
-                    localStorage.setItem('colaPendientes', JSON.stringify(colaPendientes));
-                }, i * 100);
+                    if (conectado && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            tipo: 'escanear',
+                            data: {escanerId, ean: p.ean}
+                        }));
+                        colaPendientes = colaPendientes.filter(x => x.id !== p.id);
+                        localStorage.setItem('colaPendientes', JSON.stringify(colaPendientes));
+                        actualizarBarraPendientes();
+                    }
+                }, i * 150);
             });
         }
 
@@ -970,7 +1039,10 @@
             if (savedName) document.getElementById('inputNombre').value = savedName;
 
             const savedQueue = localStorage.getItem('colaPendientes');
-            if (savedQueue) colaPendientes = JSON.parse(savedQueue);
+            if (savedQueue) {
+                colaPendientes = JSON.parse(savedQueue);
+                actualizarBarraPendientes();
+            }
 
             conectar();
         });

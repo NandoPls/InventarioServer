@@ -912,6 +912,55 @@ app.post('/api/item/editar', (req, res) => {
     res.json({ ok: true, item });
 });
 
+// Agregar item manualmente (desde dashboard)
+app.post('/api/item/agregar', (req, res) => {
+    const { ean, descripcion, cantidad, zonaId } = req.body;
+
+    if (!ean || !zonaId) {
+        return res.status(400).json({ error: 'EAN y zona son requeridos' });
+    }
+
+    // Verificar que la zona existe
+    if (!estado.zonas[zonaId]) {
+        return res.status(404).json({ error: 'Zona no encontrada' });
+    }
+
+    const zona = estado.zonas[zonaId];
+    const producto = estado.maestro.find(p => p.ean === ean);
+
+    // Buscar si ya existe el item en esta zona
+    let item = zona.items.find(i => i.ean === ean);
+
+    if (item) {
+        // Si existe, incrementar cantidad
+        item.cantidad += (cantidad || 1);
+        item.ultimoEscaneo = new Date().toISOString();
+    } else {
+        // Crear nuevo item
+        item = {
+            id: uuidv4(),
+            ean,
+            codigo: producto?.codigo || '',
+            descripcion: descripcion || producto?.descripcion || 'AGREGADO MANUALMENTE',
+            cantidad: cantidad || 1,
+            existeEnMaestro: !!producto,
+            zonaId: zona.id,
+            zonaNombre: zona.nombre,
+            escaner: 'Dashboard',
+            primerEscaneo: new Date().toISOString(),
+            ultimoEscaneo: new Date().toISOString()
+        };
+        zona.items.unshift(item);
+        estado.todosLosItems.unshift(item);
+    }
+
+    guardarEstado();
+    broadcast({ tipo: 'item_agregado', data: { item } });
+    broadcast({ tipo: 'actualizacion', data: getResumen() });
+
+    res.json({ ok: true, item });
+});
+
 // Eliminar item
 app.post('/api/item/eliminar', (req, res) => {
     const { id, zonaId } = req.body;

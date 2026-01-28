@@ -1,12 +1,22 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const os = require('os');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let serverProcess = null;
 let hotspotActivo = false;
 let hotspotConfig = { nombre: 'InventarioWiFi', password: 'inventario123' };
+
+// ============================================
+// AUTO-UPDATER CONFIG
+// ============================================
+autoUpdater.autoDownload = false; // No descargar automáticamente
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Obtener versión actual
+const appVersion = require('./package.json').version;
 
 // Obtener IP local
 function getLocalIP() {
@@ -22,6 +32,9 @@ function getLocalIP() {
 }
 
 function createWindow() {
+    // Quitar barra de menú (File, Edit, etc.)
+    Menu.setApplicationMenu(null);
+
     mainWindow = new BrowserWindow({
         width: 500,
         height: 700,
@@ -177,7 +190,101 @@ ipcMain.handle('hotspot-detener', async () => {
     });
 });
 
-app.whenReady().then(createWindow);
+// ============================================
+// AUTO-UPDATER EVENTS
+// ============================================
+autoUpdater.on('checking-for-update', () => {
+    console.log('Verificando actualizaciones...');
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', { status: 'checking' });
+    }
+});
+
+autoUpdater.on('update-available', (info) => {
+    console.log('Actualización disponible:', info.version);
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', {
+            status: 'available',
+            version: info.version,
+            currentVersion: appVersion
+        });
+    }
+});
+
+autoUpdater.on('update-not-available', () => {
+    console.log('No hay actualizaciones disponibles');
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', { status: 'not-available' });
+    }
+});
+
+autoUpdater.on('download-progress', (progress) => {
+    console.log(`Descargando: ${Math.round(progress.percent)}%`);
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', {
+            status: 'downloading',
+            percent: Math.round(progress.percent)
+        });
+    }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+    console.log('Actualización descargada, lista para instalar');
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', {
+            status: 'downloaded',
+            version: info.version
+        });
+    }
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('Error en auto-updater:', err.message);
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', {
+            status: 'error',
+            error: err.message
+        });
+    }
+});
+
+// IPC handlers para actualizaciones
+ipcMain.handle('check-for-updates', async () => {
+    try {
+        await autoUpdater.checkForUpdates();
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+ipcMain.handle('download-update', async () => {
+    try {
+        await autoUpdater.downloadUpdate();
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+ipcMain.handle('install-update', async () => {
+    autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle('get-version', async () => {
+    return appVersion;
+});
+
+app.whenReady().then(() => {
+    createWindow();
+
+    // Verificar actualizaciones después de 5 segundos
+    setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(err => {
+            console.log('No se pudo verificar actualizaciones:', err.message);
+        });
+    }, 5000);
+});
 
 app.on('window-all-closed', () => {
     app.quit();

@@ -329,75 +329,54 @@
             border-top: 1px solid #eee;
         }
 
-        /* Hotspot Panel (Bottom) */
-        .hotspot-panel {
+        /* Hotspot Modal */
+        .hotspot-modal {
+            display: none;
             position: fixed;
-            bottom: 36px;
+            top: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-            color: white;
-            transform: translateY(100%);
-            transition: transform 0.3s ease;
-            z-index: 500;
-            border-top-left-radius: 16px;
-            border-top-right-radius: 16px;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
-        }
-        .hotspot-panel.visible {
-            transform: translateY(0);
-        }
-        .hotspot-toggle {
-            -webkit-app-region: no-drag;
-            position: fixed;
-            bottom: 44px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1e3a5f;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 20px 20px 0 0;
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
             align-items: center;
-            gap: 6px;
-            z-index: 501;
-            transition: all 0.2s;
+            padding: 20px;
         }
-        .hotspot-toggle:hover {
-            background: #2d5a87;
-        }
-        .hotspot-toggle .arrow {
-            transition: transform 0.3s;
-        }
-        .hotspot-toggle.active .arrow {
-            transform: rotate(180deg);
-        }
-        .hotspot-toggle .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #6b7280;
-        }
-        .hotspot-toggle .dot.activo {
-            background: #22c55e;
-            animation: pulse 2s infinite;
+        .hotspot-modal.visible {
+            display: flex;
         }
         .hotspot-content {
-            padding: 20px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
         .hotspot-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
         }
         .hotspot-header h3 {
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 600;
+        }
+        .hotspot-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .hotspot-close:hover {
+            background: rgba(255,255,255,0.3);
         }
         .hotspot-status {
             font-size: 11px;
@@ -434,6 +413,7 @@
             border-radius: 8px;
             font-size: 13px;
             background: rgba(255,255,255,0.9);
+            color: #333;
         }
         .hotspot-field input:disabled {
             background: rgba(255,255,255,0.5);
@@ -468,6 +448,30 @@
         }
         .hotspot-info-row span:first-child { opacity: 0.7; }
         .hotspot-info-row span:last-child { font-weight: 600; }
+        .wifi-btn {
+            -webkit-app-region: no-drag;
+            background: none;
+            border: none;
+            color: #3b82f6;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .wifi-btn:hover {
+            color: #1d4ed8;
+        }
+        .wifi-btn .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #9ca3af;
+        }
+        .wifi-btn .dot.activo {
+            background: #22c55e;
+        }
 
         /* Login Screen */
         .login-overlay {
@@ -611,6 +615,86 @@
             font-size: 11px;
             color: #aaa;
         }
+
+        /* Update Banner */
+        .update-banner {
+            display: none;
+            position: fixed;
+            top: 32px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 12px 20px;
+            z-index: 999;
+            animation: slideDown 0.3s ease;
+        }
+        .update-banner.visible {
+            display: block;
+        }
+        .update-banner.downloading {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .update-banner.ready {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(0); }
+        }
+        .update-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .update-text {
+            flex: 1;
+        }
+        .update-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .update-subtitle {
+            font-size: 11px;
+            opacity: 0.9;
+            margin-top: 2px;
+        }
+        .update-btn {
+            -webkit-app-region: no-drag;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            transition: all 0.2s;
+        }
+        .update-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .update-btn.primary {
+            background: white;
+            color: #1d4ed8;
+        }
+        .update-btn.primary:hover {
+            background: #f0f0f0;
+        }
+        .update-progress {
+            height: 4px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .update-progress-bar {
+            height: 100%;
+            background: white;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
     </style>
 </head>
 <body>
@@ -643,13 +727,28 @@
 
             <p class="login-error" id="loginError">Usuario o contraseña incorrectos</p>
 
-            <p class="login-footer">Sistema de Inventario v2.0</p>
+            <p class="login-footer">Sistema de Inventario v2.0.6</p>
         </div>
     </div>
 
     <div class="title-bar">
         <span>Servidor de Inventario</span>
     </div>
+
+    <!-- Update Banner -->
+    <div class="update-banner" id="updateBanner">
+        <div class="update-content">
+            <div class="update-text">
+                <div class="update-title" id="updateTitle">Nueva versión disponible</div>
+                <div class="update-subtitle" id="updateSubtitle">v2.0.2 disponible</div>
+            </div>
+            <button class="update-btn primary" id="updateBtn" onclick="handleUpdateAction()">Descargar</button>
+        </div>
+        <div class="update-progress" id="updateProgress" style="display:none;">
+            <div class="update-progress-bar" id="updateProgressBar" style="width:0%"></div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <div class="logo">
@@ -720,30 +819,24 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Botón toggle hotspot -->
-    <button class="hotspot-toggle" id="hotspotToggle" onclick="toggleHotspotPanel()">
-        <span class="dot" id="hotspotDot"></span>
-        <span>Red WiFi</span>
-        <span class="arrow">▲</span>
-    </button>
-
-    <!-- Panel hotspot -->
-    <div class="hotspot-panel" id="hotspotPanel">
+    <!-- Modal Hotspot WiFi -->
+    <div class="hotspot-modal" id="hotspotModal">
         <div class="hotspot-content">
             <div class="hotspot-header">
-                <h3>📶 Configurar Red WiFi</h3>
+                <h3>Configurar Red WiFi</h3>
+                <button class="hotspot-close" onclick="cerrarHotspotModal()">✕</button>
+            </div>
+            <div style="display:flex; justify-content:center; margin-bottom:16px;">
                 <span class="hotspot-status inactivo" id="hotspotStatus">Inactivo</span>
             </div>
             <div class="hotspot-form">
-                <div class="hotspot-row">
-                    <div class="hotspot-field">
-                        <label>Nombre de Red</label>
-                        <input type="text" id="hotspotNombre" value="InventarioWiFi" placeholder="SSID">
-                    </div>
-                    <div class="hotspot-field">
-                        <label>Contraseña</label>
-                        <input type="text" id="hotspotPassword" value="inventario123" placeholder="Mín 8 caracteres">
-                    </div>
+                <div class="hotspot-field">
+                    <label>Nombre de Red (SSID)</label>
+                    <input type="text" id="hotspotNombre" value="InventarioWiFi" placeholder="SSID">
+                </div>
+                <div class="hotspot-field">
+                    <label>Contraseña (mín. 8 caracteres)</label>
+                    <input type="text" id="hotspotPassword" value="inventario123" placeholder="Contraseña">
                 </div>
                 <button class="hotspot-btn crear" id="hotspotBtn" onclick="toggleHotspot()">
                     Crear Red WiFi
@@ -763,12 +856,17 @@
                     <span id="infoIP">-</span>
                 </div>
             </div>
+            <p style="font-size:11px; opacity:0.7; margin-top:16px; text-align:center;">Solo disponible en Windows</p>
         </div>
     </div>
 
     <div class="bottom-bar">
-        <span>v2.0.0</span>
-        <span>Desarrollado por F. Carrasco</span>
+        <span>v2.0.6</span>
+        <button class="wifi-btn" onclick="abrirHotspotModal()">
+            <span class="dot" id="hotspotDot"></span>
+            Red WiFi
+        </button>
+        <span>F. Carrasco</span>
     </div>
 
     <!-- QR Code Library -->
@@ -998,20 +1096,14 @@
         // HOTSPOT WIFI
         // ============================================
         let hotspotActivo = false;
-        let panelAbierto = false;
 
-        function toggleHotspotPanel() {
-            panelAbierto = !panelAbierto;
-            const panel = document.getElementById('hotspotPanel');
-            const toggle = document.getElementById('hotspotToggle');
+        function abrirHotspotModal() {
+            document.getElementById('hotspotModal').classList.add('visible');
+            cargarEstadoHotspot();
+        }
 
-            if (panelAbierto) {
-                panel.classList.add('visible');
-                toggle.classList.add('active');
-            } else {
-                panel.classList.remove('visible');
-                toggle.classList.remove('active');
-            }
+        function cerrarHotspotModal() {
+            document.getElementById('hotspotModal').classList.remove('visible');
         }
 
         async function cargarEstadoHotspot() {
@@ -1039,7 +1131,7 @@
                 btn.textContent = 'Detener Red';
                 btn.className = 'hotspot-btn detener';
                 info.classList.add('visible');
-                dot.classList.add('activo');
+                if (dot) dot.classList.add('activo');
 
                 document.getElementById('infoNombre').textContent = estado.nombre;
                 document.getElementById('infoPassword').textContent = estado.password;
@@ -1053,7 +1145,7 @@
                 btn.textContent = 'Crear Red WiFi';
                 btn.className = 'hotspot-btn crear';
                 info.classList.remove('visible');
-                dot.classList.remove('activo');
+                if (dot) dot.classList.remove('activo');
 
                 nombreInput.disabled = false;
                 passInput.disabled = false;
@@ -1102,6 +1194,94 @@
 
         // Cargar estado del hotspot al iniciar
         cargarEstadoHotspot();
+
+        // ============================================
+        // AUTO-UPDATER
+        // ============================================
+        let updateState = 'idle'; // idle, available, downloading, ready
+
+        ipcRenderer.on('update-status', (event, data) => {
+            console.log('Update status:', data);
+            const banner = document.getElementById('updateBanner');
+            const title = document.getElementById('updateTitle');
+            const subtitle = document.getElementById('updateSubtitle');
+            const btn = document.getElementById('updateBtn');
+            const progress = document.getElementById('updateProgress');
+            const progressBar = document.getElementById('updateProgressBar');
+
+            switch (data.status) {
+                case 'checking':
+                    // No mostrar nada mientras verifica
+                    break;
+
+                case 'available':
+                    updateState = 'available';
+                    banner.className = 'update-banner visible';
+                    title.textContent = 'Nueva versión disponible';
+                    subtitle.textContent = `v${data.version} (actual: v${data.currentVersion})`;
+                    btn.textContent = 'Descargar';
+                    btn.style.display = 'block';
+                    progress.style.display = 'none';
+                    break;
+
+                case 'downloading':
+                    updateState = 'downloading';
+                    banner.className = 'update-banner visible downloading';
+                    title.textContent = 'Descargando actualización...';
+                    subtitle.textContent = `${data.percent}% completado`;
+                    btn.style.display = 'none';
+                    progress.style.display = 'block';
+                    progressBar.style.width = data.percent + '%';
+                    break;
+
+                case 'downloaded':
+                    updateState = 'ready';
+                    banner.className = 'update-banner visible ready';
+                    title.textContent = 'Actualización lista';
+                    subtitle.textContent = `v${data.version} - Reinicia para instalar`;
+                    btn.textContent = 'Reiniciar ahora';
+                    btn.style.display = 'block';
+                    progress.style.display = 'none';
+                    break;
+
+                case 'not-available':
+                    banner.classList.remove('visible');
+                    break;
+
+                case 'error':
+                    banner.className = 'update-banner visible';
+                    banner.style.background = '#ef4444';
+                    title.textContent = 'Error de actualización';
+                    subtitle.textContent = data.error || 'No se pudo verificar';
+                    btn.textContent = 'Reintentar';
+                    btn.style.display = 'block';
+                    progress.style.display = 'none';
+                    updateState = 'error';
+                    // Ocultar después de 5 segundos
+                    setTimeout(() => banner.classList.remove('visible'), 5000);
+                    break;
+            }
+        });
+
+        function handleUpdateAction() {
+            switch (updateState) {
+                case 'available':
+                case 'error':
+                    ipcRenderer.invoke('download-update');
+                    break;
+                case 'ready':
+                    ipcRenderer.invoke('install-update');
+                    break;
+            }
+        }
+
+        // Mostrar versión actual en el footer
+        ipcRenderer.invoke('get-version').then(version => {
+            const versionSpan = document.querySelector('.bottom-bar span:first-child');
+            if (versionSpan) {
+                versionSpan.textContent = 'v' + version;
+            }
+        });
     </script>
 </body>
 </html>

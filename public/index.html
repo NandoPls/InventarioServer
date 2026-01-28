@@ -621,6 +621,33 @@
         </div>
     </div>
 
+    <!-- Modal Agregar Item a Zona -->
+    <div class="modal" id="modalAgregarItem">
+        <div class="modal-content">
+            <h3>Agregar Item a Zona</h3>
+            <p style="color:#666;margin-bottom:15px;">Zona: <strong id="agregarZonaNombre"></strong></p>
+            <div class="form-group">
+                <label>EAN / Código de Barras</label>
+                <input type="text" id="agregarEan" placeholder="Escanear o escribir EAN" oninput="buscarEnMaestro()">
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <input type="text" id="agregarDesc" placeholder="Se autocompleta del maestro">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" id="agregarCantidad" value="1" min="1">
+            </div>
+            <div id="infoMaestro" style="padding:10px; background:#f0fdf4; border-radius:6px; font-size:13px; display:none; margin-bottom:15px;">
+                <span style="color:#22c55e;">✓ Encontrado en maestro</span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarAgregarItem()">Agregar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let ws;
         let todosLosItems = [];
@@ -678,6 +705,7 @@
                     break;
                 case 'item_actualizado':
                 case 'item_eliminado':
+                case 'item_agregado':
                 case 'zona_actualizada':
                 case 'zona_eliminada':
                     cargarEstado();
@@ -775,6 +803,7 @@
                                 <div class="zona-auditor">${auditor ? auditor : 'Sin auditor'}</div>
                             </div>
                             <div style="display:flex; gap:5px;">
+                                <button onclick="agregarItemZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#22c55e; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">+ Item</button>
                                 <button onclick="editarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#3b82f6; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Editar</button>
                                 <button onclick="eliminarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Eliminar</button>
                             </div>
@@ -1010,6 +1039,84 @@
             cerrarModales();
             zonaEliminando = null;
             cargarEstado();
+        }
+
+        // === AGREGAR ITEM A ZONA ===
+        let zonaAgregando = null;
+        let maestroCache = [];
+        let buscandoMaestro = false;
+
+        function agregarItemZona(zonaId, zonaNombre) {
+            zonaAgregando = zonaId;
+            document.getElementById('agregarZonaNombre').textContent = zonaNombre;
+            document.getElementById('agregarEan').value = '';
+            document.getElementById('agregarDesc').value = '';
+            document.getElementById('agregarCantidad').value = '1';
+            document.getElementById('infoMaestro').style.display = 'none';
+            document.getElementById('modalAgregarItem').classList.add('active');
+            document.getElementById('agregarEan').focus();
+        }
+
+        async function buscarEnMaestro() {
+            const ean = document.getElementById('agregarEan').value.trim();
+            const infoEl = document.getElementById('infoMaestro');
+
+            if (ean.length < 3) {
+                infoEl.style.display = 'none';
+                return;
+            }
+
+            // Buscar en cache local primero
+            if (maestroCache.length === 0) {
+                const res = await fetch('/api/maestro');
+                const data = await res.json();
+                maestroCache = data.productos || [];
+            }
+
+            const producto = maestroCache.find(p => p.ean === ean);
+            if (producto) {
+                document.getElementById('agregarDesc').value = producto.descripcion;
+                infoEl.innerHTML = '<span style="color:#22c55e;">✓ Encontrado en maestro</span>';
+                infoEl.style.background = '#f0fdf4';
+                infoEl.style.display = 'block';
+            } else if (ean.length >= 8) {
+                infoEl.innerHTML = '<span style="color:#f59e0b;">⚠ No encontrado en maestro</span>';
+                infoEl.style.background = '#fefce8';
+                infoEl.style.display = 'block';
+            }
+        }
+
+        async function confirmarAgregarItem() {
+            if (!zonaAgregando) return;
+
+            const ean = document.getElementById('agregarEan').value.trim();
+            const descripcion = document.getElementById('agregarDesc').value.trim();
+            const cantidad = parseInt(document.getElementById('agregarCantidad').value) || 1;
+
+            if (!ean) {
+                alert('Ingresa un EAN');
+                return;
+            }
+
+            const res = await fetch('/api/item/agregar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    ean,
+                    descripcion: descripcion || 'SIN DESCRIPCION',
+                    cantidad,
+                    zonaId: zonaAgregando
+                })
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                cerrarModales();
+                zonaAgregando = null;
+                cargarEstado();
+            } else {
+                alert(result.error || 'Error al agregar');
+            }
         }
 
         // === STOCK TIENDA Y COMPARACIÓN ===
