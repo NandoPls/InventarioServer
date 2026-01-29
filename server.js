@@ -9,6 +9,18 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const os = require('os');
 
+// Base de datos SQLite (se inicializa de forma asíncrona)
+const database = require('./database');
+let dbReady = false;
+
+// Inicializar base de datos
+database.initDatabase().then(() => {
+    dbReady = true;
+    console.log('Base de datos lista');
+}).catch(err => {
+    console.error('Error inicializando base de datos:', err);
+});
+
 // Determinar carpeta de datos (fuera del ASAR en producción)
 function getDataDir() {
     // Si estamos en un ASAR, usar carpeta en el home del usuario
@@ -85,7 +97,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = 3000;
+// Puertos a intentar (en orden de preferencia)
+const PORTS_TO_TRY = [80, 8080, 3000];
+let PORT = 3000; // Puerto por defecto, se actualizará
 
 // Middleware
 app.use(express.json());
@@ -116,25 +130,48 @@ const estadoPath = path.join(DATA_DIR, 'estado.json');
 if (fs.existsSync(estadoPath)) {
     try {
         const saved = JSON.parse(fs.readFileSync(estadoPath, 'utf8'));
-        if (saved.sesionActiva) {
-            estado = saved;
-            // Asegurar que stockTienda exista (para estados guardados antes de esta feature)
-            if (!estado.stockTienda) {
-                estado.stockTienda = [];
-            }
-            console.log('Estado anterior cargado');
-        }
+
+        // SIEMPRE cargar el estado guardado (no solo si hay sesionActiva)
+        estado = {
+            sesionActiva: saved.sesionActiva || null,
+            maestro: saved.maestro || [],
+            stockTienda: saved.stockTienda || [],
+            escaneres: saved.escaneres || {},
+            zonas: saved.zonas || {},
+            todosLosItems: saved.todosLosItems || []
+        };
+
+        console.log('╔════════════════════════════════════════════════════════════╗');
+        console.log('║  ESTADO ANTERIOR CARGADO                                   ║');
+        console.log('╠════════════════════════════════════════════════════════════╣');
+        console.log(`║  Sesión activa: ${estado.sesionActiva ? estado.sesionActiva.nombre : 'Ninguna'}`);
+        console.log(`║  Maestro: ${estado.maestro.length} productos`);
+        console.log(`║  Stock Tienda: ${estado.stockTienda.length} items`);
+        console.log(`║  Zonas: ${Object.keys(estado.zonas).length}`);
+        console.log(`║  Items escaneados: ${estado.todosLosItems.length}`);
+        console.log('╚════════════════════════════════════════════════════════════╝');
     } catch (e) {
-        console.log('No se pudo cargar estado anterior');
+        console.log('No se pudo cargar estado anterior:', e.message);
+    }
+} else {
+    console.log('Sin estado previo guardado, iniciando limpio');
+}
+
+// Guardar estado periódicamente (cada 3 segundos)
+function guardarEstado() {
+    try {
+        fs.writeFileSync(estadoPath, JSON.stringify(estado, null, 2));
+    } catch (e) {
+        console.error('Error guardando estado:', e.message);
     }
 }
 
-// Guardar estado periódicamente
-function guardarEstado() {
-    fs.writeFileSync(estadoPath, JSON.stringify(estado, null, 2));
-}
+setInterval(guardarEstado, 3000);
 
-setInterval(guardarEstado, 5000);
+// Guardar estado al cerrar
+process.on('exit', guardarEstado);
+process.on('SIGINT', () => { guardarEstado(); process.exit(0); });
+process.on('SIGTERM', () => { guardarEstado(); process.exit(0); });
 
 // ============================================
 // WEBSOCKET - Comunicación en tiempo real
@@ -438,7 +475,10 @@ function procesarEscaneo(ws, data) {
 
 // Calcular comparación de inventario (faltantes/sobrantes)
 function getComparacion() {
+    console.log(`[Comparación] Stock Tienda: ${estado.stockTienda?.length || 0} items, Escaneados: ${estado.todosLosItems?.length || 0} items`);
+
     if (!estado.stockTienda || estado.stockTienda.length === 0) {
+        console.log('[Comparación] No hay stock tienda cargado, retornando vacío');
         return {
             tieneStock: false,
             totalEsperado: 0,
@@ -568,6 +608,8 @@ function getComparacion() {
     faltantes.sort((a, b) => b.costoTotal - a.costoTotal);
     sobrantes.sort((a, b) => b.costoTotal - a.costoTotal);
 
+    console.log(`[Comparación] Resultado: ${faltantes.length} faltantes, ${sobrantes.length} sobrantes`);
+
     return {
         tieneStock: true,
         totalEsperado,
@@ -642,13 +684,41 @@ app.get('/api/estado', (req, res) => {
     res.json(getResumen());
 });
 
+// Debug - ver estado de datos cargados
+app.get('/api/debug', (req, res) => {
+    const comparacion = getComparacion();
+    res.json({
+        maestro: estado.maestro.length,
+        stockTienda: estado.stockTienda.length,
+        itemsEscaneados: estado.todosLosItems.length,
+        zonas: Object.keys(estado.zonas).length,
+        sesionActiva: estado.sesionActiva ? estado.sesionActiva.nombre : null,
+        comparacion: {
+            tieneStock: comparacion.tieneStock,
+            totalFaltantes: comparacion.faltantes?.length || 0,
+            totalSobrantes: comparacion.sobrantes?.length || 0,
+            costoFaltante: comparacion.costoFaltante,
+            costoSobrante: comparacion.costoSobrante
+        }
+    });
+});
+
+// Obtener todos los items (para el dashboard)
+app.get('/api/items', (req, res) => {
+    res.json(estado.todosLosItems);
+});
+
 // Iniciar nueva sesión
 app.post('/api/sesion/nueva', (req, res) => {
     estado = {
         sesionActiva: {
             id: uuidv4(),
             fechaInicio: new Date().toISOString(),
-            nombre: req.body.nombre || `Inventario ${new Date().toLocaleDateString()}`
+            nombre: req.body.nombre || `Inventario ${new Date().toLocaleDateString()}`,
+            detalles: req.body.detalles || null,
+            tienda_id: req.body.tienda_id || null,
+            tienda_nombre: req.body.tienda_nombre || null,
+            tienda_numero: req.body.tienda_numero || null
         },
         maestro: estado.maestro, // Mantener maestro si ya estaba cargado
         stockTienda: estado.stockTienda, // Mantener stock tienda si ya estaba cargado
@@ -717,6 +787,17 @@ app.get('/api/maestro', (req, res) => {
     res.json({ cantidad: estado.maestro.length, productos: estado.maestro.slice(0, 100) });
 });
 
+// Buscar producto en maestro por EAN
+app.get('/api/maestro/buscar/:ean', (req, res) => {
+    const ean = req.params.ean;
+    const producto = estado.maestro.find(p => p.ean === ean);
+    if (producto) {
+        res.json({ encontrado: true, producto });
+    } else {
+        res.json({ encontrado: false });
+    }
+});
+
 // Cargar Stock Tienda desde Excel
 app.post('/api/stock-tienda/cargar', upload.single('archivo'), (req, res) => {
     try {
@@ -764,7 +845,12 @@ app.get('/api/comparacion', (req, res) => {
 
 // Exportar a Excel
 app.get('/api/exportar', (req, res) => {
-    // HOJA 1: Detalle completo
+    const wb = XLSX.utils.book_new();
+
+    // Obtener comparación (faltantes/sobrantes)
+    const comparacion = getComparacion();
+
+    // HOJA 1: Detalle de items escaneados
     const items = estado.todosLosItems.map(i => ({
         'Zona': i.zonaNombre,
         'EAN': i.ean,
@@ -776,89 +862,78 @@ app.get('/api/exportar', (req, res) => {
         'Hora': new Date(i.ultimoEscaneo).toLocaleString()
     }));
 
-    const ws = XLSX.utils.json_to_sheet(items);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
+    if (items.length > 0) {
+        const ws = XLSX.utils.json_to_sheet(items);
+        ws['!cols'] = [
+            { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 35 },
+            { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 20 }
+        ];
+        XLSX.utils.book_append_sheet(wb, ws, 'Detalle Escaneado');
+    }
 
-    // Ajustar ancho de columnas Hoja 1
-    ws['!cols'] = [
-        { wch: 12 }, // Zona
-        { wch: 15 }, // EAN
-        { wch: 12 }, // Código
-        { wch: 35 }, // Descripción
-        { wch: 10 }, // Cantidad
-        { wch: 12 }, // En Maestro
-        { wch: 15 }, // Escaneado por
-        { wch: 20 }  // Hora
+    // HOJA 2: Faltantes (items en stock que no se escanearon o se escanearon menos)
+    if (comparacion.faltantes && comparacion.faltantes.length > 0) {
+        const faltantesData = comparacion.faltantes.map(f => ({
+            'EAN': f.ean,
+            'Código': f.codigo || '',
+            'Descripción': f.descripcion || '',
+            'Stock Esperado': f.cantidadEsperada,
+            'Cantidad Escaneada': f.cantidadEscaneada,
+            'Faltante': f.diferencia,
+            'Costo Unitario': f.costoUnitario || 0,
+            'Costo Total Faltante': f.costoTotal || 0
+        }));
+        const wsFaltantes = XLSX.utils.json_to_sheet(faltantesData);
+        wsFaltantes['!cols'] = [
+            { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
+            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsFaltantes, 'Faltantes');
+    }
+
+    // HOJA 3: Sobrantes (items escaneados de más o no esperados)
+    if (comparacion.sobrantes && comparacion.sobrantes.length > 0) {
+        const sobrantesData = comparacion.sobrantes.map(s => ({
+            'EAN': s.ean,
+            'Código': s.codigo || '',
+            'Descripción': s.descripcion || '',
+            'Stock Esperado': s.cantidadEsperada,
+            'Cantidad Escaneada': s.cantidadEscaneada,
+            'Sobrante': s.diferencia,
+            'Costo Unitario': s.costoUnitario || 0,
+            'Costo Total Sobrante': s.costoTotal || 0
+        }));
+        const wsSobrantes = XLSX.utils.json_to_sheet(sobrantesData);
+        wsSobrantes['!cols'] = [
+            { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
+            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSobrantes, 'Sobrantes');
+    }
+
+    // HOJA 4: Resumen general
+    const resumenData = [
+        { 'Concepto': 'Total Items Esperados (Stock)', 'Valor': comparacion.totalEsperado || 0 },
+        { 'Concepto': 'Total Items Escaneados', 'Valor': comparacion.totalEscaneado || 0 },
+        { 'Concepto': 'Progreso (%)', 'Valor': comparacion.progreso || 0 },
+        { 'Concepto': '', 'Valor': '' },
+        { 'Concepto': 'Total Faltantes (cantidad)', 'Valor': comparacion.faltantes?.length || 0 },
+        { 'Concepto': 'Costo Total Faltantes', 'Valor': comparacion.costoFaltante || 0 },
+        { 'Concepto': '', 'Valor': '' },
+        { 'Concepto': 'Total Sobrantes (cantidad)', 'Valor': comparacion.sobrantes?.length || 0 },
+        { 'Concepto': 'Costo Total Sobrantes', 'Valor': comparacion.costoSobrante || 0 },
+        { 'Concepto': '', 'Valor': '' },
+        { 'Concepto': 'Diferencia Neta', 'Valor': comparacion.diferenciaCosto || 0 }
     ];
+    const wsResumen = XLSX.utils.json_to_sheet(resumenData);
+    wsResumen['!cols'] = [{ wch: 30 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
 
-    // HOJA 2: Resumen por código
-    // Crear mapa de stock esperado (tienda)
-    const stockEsperadoMap = {};
-    estado.stockTienda.forEach(item => {
-        if (!stockEsperadoMap[item.ean]) {
-            stockEsperadoMap[item.ean] = 0;
-        }
-        stockEsperadoMap[item.ean] += item.cantidad;
-    });
-
-    // Agrupar por EAN y sumar cantidades escaneadas
-    const resumenMap = {};
-    estado.todosLosItems.forEach(item => {
-        if (!resumenMap[item.ean]) {
-            // Buscar costo en el maestro
-            const productoMaestro = estado.maestro.find(p => p.ean === item.ean);
-            resumenMap[item.ean] = {
-                ean: item.ean,
-                codigo: item.codigo,
-                descripcion: item.descripcion,
-                cantidadContada: 0,
-                stockEsperado: stockEsperadoMap[item.ean] || 0,
-                costo: productoMaestro?.costo || 0,
-                existeEnMaestro: item.existeEnMaestro
-            };
-        }
-        resumenMap[item.ean].cantidadContada += item.cantidad;
-    });
-
-    // Convertir a array y ordenar: primero los que están en maestro, luego los que no
-    const resumenArray = Object.values(resumenMap).sort((a, b) => {
-        if (a.existeEnMaestro && !b.existeEnMaestro) return -1;
-        if (!a.existeEnMaestro && b.existeEnMaestro) return 1;
-        return 0;
-    });
-
-    // Formatear para Excel
-    const resumenItems = resumenArray.map(r => {
-        const diferencia = r.cantidadContada - r.stockEsperado;
-        return {
-            'Código': r.codigo,
-            'EAN': r.ean,
-            'Descripción': r.descripcion,
-            'Stock Esperado': r.stockEsperado,
-            'Cantidad Contada': r.cantidadContada,
-            'Diferencia': diferencia,
-            'Costo Unitario': r.costo,
-            'Costo Diferencia': diferencia * r.costo,
-            'En Maestro': r.existeEnMaestro ? 'SI' : 'NO'
-        };
-    });
-
-    const ws2 = XLSX.utils.json_to_sheet(resumenItems);
-    XLSX.utils.book_append_sheet(wb, ws2, 'Resumen');
-
-    // Ajustar ancho de columnas Hoja 2
-    ws2['!cols'] = [
-        { wch: 15 }, // Código
-        { wch: 15 }, // EAN
-        { wch: 35 }, // Descripción
-        { wch: 14 }, // Stock Esperado
-        { wch: 14 }, // Cantidad Contada
-        { wch: 12 }, // Diferencia
-        { wch: 14 }, // Costo Unitario
-        { wch: 14 }, // Costo Diferencia
-        { wch: 12 }  // En Maestro
-    ];
+    // Si no hay ninguna hoja, crear una vacía con mensaje
+    if (wb.SheetNames.length === 0) {
+        const wsVacio = XLSX.utils.json_to_sheet([{ 'Mensaje': 'No hay datos para exportar. Carga Stock Tienda y/o escanea items.' }]);
+        XLSX.utils.book_append_sheet(wb, wsVacio, 'Sin Datos');
+    }
 
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -873,9 +948,33 @@ app.post('/api/item/editar', (req, res) => {
     const { id, descripcion, cantidad, zonaId } = req.body;
 
     // Buscar item en todosLosItems
-    const item = estado.todosLosItems.find(i => i.id === id);
-    if (!item) {
+    const itemIndex = estado.todosLosItems.findIndex(i => i.id === id);
+    if (itemIndex === -1) {
         return res.status(404).json({ error: 'Item no encontrado' });
+    }
+
+    const item = estado.todosLosItems[itemIndex];
+
+    // Si la cantidad es 0 o menor, eliminar el item
+    if (cantidad !== undefined && cantidad <= 0) {
+        // Eliminar de todosLosItems
+        estado.todosLosItems.splice(itemIndex, 1);
+
+        // Eliminar de la zona
+        if (estado.zonas[item.zonaId]) {
+            estado.zonas[item.zonaId].items = estado.zonas[item.zonaId].items.filter(i => i.id !== id);
+        }
+
+        // Eliminar de escaneres
+        Object.values(estado.escaneres).forEach(escaner => {
+            escaner.items = escaner.items.filter(i => i.id !== id);
+        });
+
+        guardarEstado();
+        broadcast({ tipo: 'item_eliminado', data: { id } });
+        broadcast({ tipo: 'actualizacion', data: getResumen() });
+
+        return res.json({ ok: true, eliminado: true });
     }
 
     // Si cambió de zona, mover el item
@@ -905,6 +1004,15 @@ app.post('/api/item/editar', (req, res) => {
         }
     }
 
+    // También actualizar en escaneres (si existe)
+    Object.values(estado.escaneres).forEach(escaner => {
+        const escanerItem = escaner.items.find(i => i.id === id || i.ean === item.ean);
+        if (escanerItem) {
+            if (descripcion !== undefined) escanerItem.descripcion = descripcion;
+            if (cantidad !== undefined) escanerItem.cantidad = cantidad;
+        }
+    });
+
     guardarEstado();
     broadcast({ tipo: 'item_actualizado', data: { item } });
     broadcast({ tipo: 'actualizacion', data: getResumen() });
@@ -929,15 +1037,22 @@ app.post('/api/item/agregar', (req, res) => {
     const producto = estado.maestro.find(p => p.ean === ean);
 
     // Buscar si ya existe el item en esta zona
-    let item = zona.items.find(i => i.ean === ean);
+    let itemZona = zona.items.find(i => i.ean === ean);
 
-    if (item) {
-        // Si existe, incrementar cantidad
-        item.cantidad += (cantidad || 1);
-        item.ultimoEscaneo = new Date().toISOString();
+    if (itemZona) {
+        // Si existe en la zona, incrementar cantidad
+        itemZona.cantidad += (cantidad || 1);
+        itemZona.ultimoEscaneo = new Date().toISOString();
+
+        // También actualizar en todosLosItems
+        const itemGlobal = estado.todosLosItems.find(i => i.id === itemZona.id);
+        if (itemGlobal) {
+            itemGlobal.cantidad = itemZona.cantidad;
+            itemGlobal.ultimoEscaneo = itemZona.ultimoEscaneo;
+        }
     } else {
         // Crear nuevo item
-        item = {
+        const nuevoItem = {
             id: uuidv4(),
             ean,
             codigo: producto?.codigo || '',
@@ -950,33 +1065,43 @@ app.post('/api/item/agregar', (req, res) => {
             primerEscaneo: new Date().toISOString(),
             ultimoEscaneo: new Date().toISOString()
         };
-        zona.items.unshift(item);
-        estado.todosLosItems.unshift(item);
+        zona.items.unshift(nuevoItem);
+        estado.todosLosItems.unshift(nuevoItem);
+        itemZona = nuevoItem;
     }
 
     guardarEstado();
-    broadcast({ tipo: 'item_agregado', data: { item } });
+    broadcast({ tipo: 'item_agregado', data: { item: itemZona } });
     broadcast({ tipo: 'actualizacion', data: getResumen() });
 
-    res.json({ ok: true, item });
+    res.json({ ok: true, item: itemZona });
 });
 
 // Eliminar item
 app.post('/api/item/eliminar', (req, res) => {
-    const { id, zonaId } = req.body;
+    const { id } = req.body;
 
-    // Remover de todosLosItems
+    // Buscar item en todosLosItems para obtener su zonaId
     const index = estado.todosLosItems.findIndex(i => i.id === id);
     if (index === -1) {
         return res.status(404).json({ error: 'Item no encontrado' });
     }
 
+    const item = estado.todosLosItems[index];
+    const zonaIdDelItem = item.zonaId;
+
+    // Remover de todosLosItems
     estado.todosLosItems.splice(index, 1);
 
-    // Remover de la zona
-    if (zonaId && estado.zonas[zonaId]) {
-        estado.zonas[zonaId].items = estado.zonas[zonaId].items.filter(i => i.id !== id);
+    // Remover de la zona usando el zonaId del propio item
+    if (zonaIdDelItem && estado.zonas[zonaIdDelItem]) {
+        estado.zonas[zonaIdDelItem].items = estado.zonas[zonaIdDelItem].items.filter(i => i.id !== id);
     }
+
+    // También buscar y eliminar de escaneres por si acaso
+    Object.values(estado.escaneres).forEach(escaner => {
+        escaner.items = escaner.items.filter(i => i.id !== id);
+    });
 
     guardarEstado();
     broadcast({ tipo: 'item_eliminado', data: { id } });
@@ -990,6 +1115,7 @@ app.post('/api/limpiar', (req, res) => {
     estado = {
         sesionActiva: null,
         maestro: [],
+        stockTienda: [],
         escaneres: {},
         zonas: {},
         todosLosItems: []
@@ -997,6 +1123,47 @@ app.post('/api/limpiar', (req, res) => {
     guardarEstado();
     broadcast({ tipo: 'limpiado', data: getResumen() });
     res.json({ ok: true });
+});
+
+// Crear zona manualmente (desde dashboard)
+app.post('/api/zona/crear', (req, res) => {
+    const { zonaId, nombre, auditorNombre, auditorNombreNormalizado } = req.body;
+
+    if (!nombre) {
+        return res.status(400).json({ error: 'Nombre de zona requerido' });
+    }
+
+    const id = zonaId || 'zona_' + Date.now();
+
+    if (estado.zonas[id]) {
+        return res.status(400).json({ error: 'Ya existe una zona con ese ID' });
+    }
+
+    // Si se especificó un auditor, asignar a ese auditor
+    // Si no, la zona queda sin dueño (solo accesible desde dashboard)
+    const nombreDueno = auditorNombre || 'Dashboard';
+    const nombreNormDueno = auditorNombreNormalizado || 'dashboard';
+
+    estado.zonas[id] = {
+        id: id,
+        nombre: nombre,
+        escaner: null,
+        creadoPor: 'Dashboard',
+        creadoPorNombre: nombreDueno,
+        creadoPorNombreNormalizado: nombreNormDueno,
+        items: [],
+        cerrada: false,
+        fechaInicio: new Date().toISOString()
+    };
+
+    guardarEstado();
+
+    // Notificar a todos, incluyendo al auditor asignado
+    broadcast({ tipo: 'zona_creada', data: { zonaId: id, nombre, auditor: nombreDueno } });
+    enviarZonasPersonalizadas(); // Actualizar lista de zonas de cada auditor
+    broadcast({ tipo: 'actualizacion', data: getResumen() });
+
+    res.json({ ok: true, zonaId: id });
 });
 
 // Editar zona (nombre)
@@ -1096,120 +1263,487 @@ app.post('/api/update/aplicar', (req, res) => {
 });
 
 // ============================================
-// HOTSPOT WIFI (Solo Windows)
+// API DE TIENDAS
 // ============================================
-let hotspotActivo = false;
-let hotspotConfig = { nombre: 'InventarioWiFi', password: 'inventario123' };
 
-// Obtener estado del hotspot
-app.get('/api/hotspot/estado', (req, res) => {
-    // Obtener IP actual
-    const interfaces = require('os').networkInterfaces();
-    let ip = 'localhost';
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                ip = iface.address;
-                break;
-            }
-        }
+// Middleware para verificar que la DB esté lista
+function checkDbReady(req, res, next) {
+    if (!dbReady) {
+        return res.status(503).json({ error: 'Base de datos inicializándose, intente en unos segundos' });
     }
+    next();
+}
 
-    res.json({
-        activo: hotspotActivo,
-        nombre: hotspotConfig.nombre,
-        password: hotspotConfig.password,
-        ip: ip,
-        plataforma: process.platform
-    });
+// Obtener tiendas activas
+app.get('/api/tiendas', checkDbReady, (req, res) => {
+    const tiendas = database.obtenerTiendas();
+    res.json(tiendas);
 });
 
-// Crear hotspot
-app.post('/api/hotspot/crear', (req, res) => {
-    const { nombre, password } = req.body;
+// Obtener todas las tiendas (incluyendo inactivas)
+app.get('/api/tiendas/todas', (req, res) => {
+    const tiendas = database.obtenerTodasLasTiendas();
+    res.json(tiendas);
+});
 
-    if (!nombre || !password || password.length < 8) {
-        return res.status(400).json({ error: 'Nombre y contraseña (mín 8 caracteres) requeridos' });
+// Obtener tienda por ID
+app.get('/api/tiendas/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const tienda = database.obtenerTiendaPorId(id);
+    if (tienda) {
+        res.json(tienda);
+    } else {
+        res.status(404).json({ error: 'Tienda no encontrada' });
+    }
+});
+
+// Crear tienda
+app.post('/api/tiendas', (req, res) => {
+    const { numero_almacen, nombre } = req.body;
+
+    if (!numero_almacen || !nombre) {
+        return res.status(400).json({ error: 'Número de almacén y nombre son requeridos' });
     }
 
-    if (process.platform !== 'win32') {
-        return res.status(400).json({ error: 'Esta función solo está disponible en Windows' });
+    const result = database.crearTienda(numero_almacen, nombre);
+    if (result.ok) {
+        res.json({ ok: true, id: result.id });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Actualizar tienda
+app.put('/api/tiendas/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.actualizarTienda(id, req.body);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Eliminar tienda
+app.delete('/api/tiendas/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.eliminarTienda(id);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// ============================================
+// API DE USUARIOS
+// ============================================
+
+// Login
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
 
-    hotspotConfig.nombre = nombre;
-    hotspotConfig.password = password;
-
-    // Detener hotspot existente
-    exec('netsh wlan stop hostednetwork', { cwd: __dirname }, () => {
-        // Configurar nuevo hotspot
-        const cmd = `netsh wlan set hostednetwork mode=allow ssid="${nombre}" key="${password}"`;
-        exec(cmd, { cwd: __dirname }, (err) => {
-            if (err) {
-                console.error('Error configurando hotspot:', err.message);
-                return res.status(500).json({
-                    error: 'No se pudo configurar el hotspot. Asegúrate de ejecutar como Administrador.',
-                    detalle: err.message
-                });
+    const usuario = database.verificarCredenciales(username, password);
+    if (usuario) {
+        res.json({
+            ok: true,
+            usuario: {
+                id: usuario.id,
+                username: usuario.username,
+                nombre: usuario.nombre,
+                rol: usuario.rol
             }
-
-            // Iniciar hotspot
-            exec('netsh wlan start hostednetwork', { cwd: __dirname }, (err, stdout) => {
-                if (err) {
-                    console.error('Error iniciando hotspot:', err.message);
-                    return res.status(500).json({
-                        error: 'No se pudo iniciar el hotspot. Tu adaptador WiFi puede no soportar modo AP.',
-                        detalle: err.message
-                    });
-                }
-
-                hotspotActivo = true;
-                console.log(`Hotspot "${nombre}" creado exitosamente`);
-                res.json({ ok: true, mensaje: `Hotspot "${nombre}" creado`, password });
-            });
         });
-    });
+    } else {
+        res.status(401).json({ error: 'Credenciales inválidas' });
+    }
 });
 
-// Detener hotspot
-app.post('/api/hotspot/detener', (req, res) => {
-    if (process.platform !== 'win32') {
-        return res.status(400).json({ error: 'Esta función solo está disponible en Windows' });
+// Obtener usuarios (solo admin)
+app.get('/api/usuarios', (req, res) => {
+    const usuarios = database.obtenerUsuarios();
+    res.json(usuarios);
+});
+
+// Crear usuario (solo admin)
+app.post('/api/usuarios', (req, res) => {
+    const { username, password, nombre, rol } = req.body;
+
+    if (!username || !password || !nombre) {
+        return res.status(400).json({ error: 'Faltan datos requeridos' });
     }
 
-    exec('netsh wlan stop hostednetwork', { cwd: __dirname }, (err) => {
-        hotspotActivo = false;
-        if (err) {
-            return res.json({ ok: true, mensaje: 'Hotspot detenido (o no estaba activo)' });
-        }
-        res.json({ ok: true, mensaje: 'Hotspot detenido' });
-    });
+    const result = database.crearUsuario(username, password, nombre, rol);
+    if (result.ok) {
+        res.json({ ok: true, id: result.id });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Actualizar usuario (solo admin)
+app.put('/api/usuarios/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.actualizarUsuario(id, req.body);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Eliminar usuario (solo admin)
+app.delete('/api/usuarios/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.eliminarUsuario(id);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
 });
 
 // ============================================
-// INICIAR SERVIDOR
+// API DE HISTÓRICO
 // ============================================
 
-server.listen(PORT, '0.0.0.0', () => {
+// Obtener histórico
+app.get('/api/historico', (req, res) => {
+    const limite = parseInt(req.query.limite) || 100;
+    const historico = database.obtenerHistorico(limite);
+    res.json(historico);
+});
+
+// Obtener registro específico del histórico
+app.get('/api/historico/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const registro = database.obtenerHistoricoPorId(id);
+
+    if (registro) {
+        res.json(registro);
+    } else {
+        res.status(404).json({ error: 'Registro no encontrado' });
+    }
+});
+
+// Guardar en histórico (guardar resultado de inventario actual)
+app.post('/api/historico', (req, res) => {
+    const { tienda_id, nombre_tienda, numero_almacen, notas, creado_por } = req.body;
+
+    if (!nombre_tienda) {
+        return res.status(400).json({ error: 'Nombre de tienda requerido' });
+    }
+
+    // Obtener datos actuales del inventario
+    const comparacion = getComparacion();
+    const resumen = getResumen();
+
+    // Preparar detalle de items (todos los items escaneados)
+    const detalleItems = estado.todosLosItems.map(item => ({
+        zona: item.zonaNombre,
+        ean: item.ean,
+        codigo: item.codigo,
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+        existeEnMaestro: item.existeEnMaestro,
+        escaner: item.escaner,
+        ultimoEscaneo: item.ultimoEscaneo
+    }));
+
+    const datos = {
+        fecha: new Date().toISOString(),
+        tienda_id: tienda_id || null,
+        nombre_tienda,
+        numero_almacen: numero_almacen || null,
+        nombre_sesion: estado.sesionActiva?.nombre || null,
+        detalles_sesion: estado.sesionActiva?.detalles || null,
+        total_items_escaneados: resumen.totalItems,
+        total_eans_unicos: resumen.eansUnicos,
+        total_zonas: resumen.totalZonas,
+        total_faltantes: comparacion.totalFaltantes || 0,
+        costo_faltantes: comparacion.costoFaltante || 0,
+        detalle_faltantes: comparacion.faltantes || [],
+        total_sobrantes: comparacion.totalSobrantes || 0,
+        costo_sobrantes: comparacion.costoSobrante || 0,
+        detalle_sobrantes: comparacion.sobrantes || [],
+        costo_general: comparacion.diferenciaCosto || 0,
+        creado_por,
+        notas,
+        detalle_items: detalleItems
+    };
+
+    const result = database.guardarHistorico(datos);
+
+    if (result.ok) {
+        broadcast({ tipo: 'historico_guardado', data: { id: result.id } });
+        res.json({ ok: true, id: result.id });
+    } else {
+        res.status(500).json({ error: result.error });
+    }
+});
+
+// Actualizar registro del histórico (solo admin)
+app.put('/api/historico/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.actualizarHistorico(id, req.body);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Eliminar registro del histórico (solo admin)
+app.delete('/api/historico/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const result = database.eliminarHistorico(id);
+
+    if (result.ok) {
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: result.error });
+    }
+});
+
+// Exportar registro del histórico a Excel
+app.get('/api/historico/:id/exportar', (req, res) => {
+    const id = parseInt(req.params.id);
+    const registro = database.obtenerHistoricoPorId(id);
+
+    if (!registro) {
+        return res.status(404).json({ error: 'Registro no encontrado' });
+    }
+
+    // Crear workbook
+    const wb = XLSX.utils.book_new();
+
+    // HOJA 1: Resumen
+    const resumen = [
+        { Campo: 'Fecha', Valor: new Date(registro.fecha).toLocaleString() },
+        { Campo: 'Tienda', Valor: registro.nombre_tienda },
+        { Campo: 'Número Almacén', Valor: registro.numero_almacen || '-' },
+        { Campo: 'Sesión', Valor: registro.nombre_sesion || '-' },
+        { Campo: 'Detalles', Valor: registro.detalles_sesion || '-' },
+        { Campo: '', Valor: '' },
+        { Campo: 'Total Items Escaneados', Valor: registro.total_items_escaneados },
+        { Campo: 'Total EANs Únicos', Valor: registro.total_eans_unicos },
+        { Campo: 'Total Zonas', Valor: registro.total_zonas },
+        { Campo: '', Valor: '' },
+        { Campo: 'Total Faltantes', Valor: registro.total_faltantes },
+        { Campo: 'Costo Faltantes', Valor: registro.costo_faltantes },
+        { Campo: 'Total Sobrantes', Valor: registro.total_sobrantes },
+        { Campo: 'Costo Sobrantes', Valor: registro.costo_sobrantes },
+        { Campo: 'Diferencia General', Valor: registro.costo_general },
+        { Campo: '', Valor: '' },
+        { Campo: 'Creado Por', Valor: registro.creado_por || '-' },
+        { Campo: 'Notas', Valor: registro.notas || '-' }
+    ];
+    const wsResumen = XLSX.utils.json_to_sheet(resumen);
+    wsResumen['!cols'] = [{ wch: 25 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+    // HOJA 2: Faltantes
+    const faltantes = registro.detalle_faltantes || [];
+    if (faltantes.length > 0) {
+        const faltantesData = faltantes.map(f => ({
+            'EAN': f.ean,
+            'Código': f.codigo || '',
+            'Descripción': f.descripcion || '',
+            'Cantidad Esperada': f.cantidadEsperada,
+            'Cantidad Escaneada': f.cantidadEscaneada,
+            'Diferencia': f.diferencia,
+            'Costo Unitario': f.costoUnitario || 0,
+            'Costo Total': f.costoTotal || 0
+        }));
+        const wsFaltantes = XLSX.utils.json_to_sheet(faltantesData);
+        wsFaltantes['!cols'] = [
+            { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 15 },
+            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsFaltantes, 'Faltantes');
+    }
+
+    // HOJA 3: Sobrantes
+    const sobrantes = registro.detalle_sobrantes || [];
+    if (sobrantes.length > 0) {
+        const sobrantesData = sobrantes.map(s => ({
+            'EAN': s.ean,
+            'Código': s.codigo || '',
+            'Descripción': s.descripcion || '',
+            'Cantidad Esperada': s.cantidadEsperada,
+            'Cantidad Escaneada': s.cantidadEscaneada,
+            'Diferencia': s.diferencia,
+            'Costo Unitario': s.costoUnitario || 0,
+            'Costo Total': s.costoTotal || 0
+        }));
+        const wsSobrantes = XLSX.utils.json_to_sheet(sobrantesData);
+        wsSobrantes['!cols'] = [
+            { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 15 },
+            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSobrantes, 'Sobrantes');
+    }
+
+    // HOJA 4: Detalle completo de items escaneados
+    const items = registro.detalle_items || [];
+    if (items.length > 0) {
+        const itemsData = items.map(i => ({
+            'Zona': i.zona || '',
+            'EAN': i.ean,
+            'Código': i.codigo || '',
+            'Descripción': i.descripcion || '',
+            'Cantidad': i.cantidad,
+            'En Maestro': i.existeEnMaestro ? 'SI' : 'NO',
+            'Escaneado por': i.escaner || '',
+            'Hora': i.ultimoEscaneo ? new Date(i.ultimoEscaneo).toLocaleString() : ''
+        }));
+        const wsItems = XLSX.utils.json_to_sheet(itemsData);
+        wsItems['!cols'] = [
+            { wch: 12 }, // Zona
+            { wch: 15 }, // EAN
+            { wch: 12 }, // Código
+            { wch: 35 }, // Descripción
+            { wch: 10 }, // Cantidad
+            { wch: 12 }, // En Maestro
+            { wch: 15 }, // Escaneado por
+            { wch: 20 }  // Hora
+        ];
+        XLSX.utils.book_append_sheet(wb, wsItems, 'Detalle');
+    }
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const fechaStr = new Date(registro.fecha).toISOString().slice(0, 10);
+    const tiendaStr = registro.nombre_tienda.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `historico_${tiendaStr}_${fechaStr}.xlsx`;
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+});
+
+// ============================================
+// INICIAR SERVIDOR CON FALLBACK DE PUERTOS
+// ============================================
+
+function getLocalIP() {
     const interfaces = require('os').networkInterfaces();
-    let ip = 'localhost';
+    let hotspotIP = null;
+    let regularIP = null;
 
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                ip = iface.address;
-                break;
+                if (iface.address.startsWith('192.168.137.')) {
+                    hotspotIP = iface.address;
+                } else if (!regularIP) {
+                    regularIP = iface.address;
+                }
             }
         }
     }
 
-    console.log('');
-    console.log('╔════════════════════════════════════════════════════════════╗');
-    console.log('║          SERVIDOR DE INVENTARIO INICIADO                   ║');
-    console.log('╠════════════════════════════════════════════════════════════╣');
-    console.log(`║  Dashboard:  http://localhost:${PORT}                        ║`);
-    console.log(`║  En red:     http://${ip}:${PORT}                       ║`);
-    console.log('╠════════════════════════════════════════════════════════════╣');
-    console.log('║  Los escáneres deben estar en la misma red WiFi            ║');
-    console.log('╚════════════════════════════════════════════════════════════╝');
-    console.log('');
-});
+    return hotspotIP || regularIP || 'localhost';
+}
+
+// Variable global para almacenar el estado del servidor
+let serverStatus = {
+    running: false,
+    port: null,
+    ip: null,
+    error: null
+};
+
+// Función para probar si un puerto está disponible
+function tryListenOnPort(port) {
+    return new Promise((resolve) => {
+        const testServer = require('http').createServer();
+
+        testServer.once('error', (err) => {
+            testServer.close();
+            resolve({ success: false, error: err.code });
+        });
+
+        testServer.once('listening', () => {
+            testServer.close();
+            resolve({ success: true });
+        });
+
+        testServer.listen(port, '0.0.0.0');
+    });
+}
+
+// Función asíncrona para encontrar puerto disponible e iniciar
+async function startServerWithFallback() {
+    for (let i = 0; i < PORTS_TO_TRY.length; i++) {
+        const port = PORTS_TO_TRY[i];
+        console.log(`Probando puerto ${port}...`);
+
+        const result = await tryListenOnPort(port);
+
+        if (result.success) {
+            // Puerto disponible, iniciar el servidor real
+            PORT = port;
+
+            server.listen(port, '0.0.0.0', () => {
+                const ip = getLocalIP();
+
+                serverStatus.running = true;
+                serverStatus.port = port;
+                serverStatus.ip = ip;
+                serverStatus.error = null;
+
+                const portDisplay = port === 80 ? '' : `:${port}`;
+
+                console.log('');
+                console.log('╔════════════════════════════════════════════════════════════╗');
+                console.log('║          SERVIDOR DE INVENTARIO INICIADO                   ║');
+                console.log('╠════════════════════════════════════════════════════════════╣');
+                console.log(`║  Puerto:     ${port}                                            ║`);
+                console.log(`║  Dashboard:  http://localhost${portDisplay}                         ║`);
+                console.log(`║  En red:     http://${ip}${portDisplay}                      ║`);
+                console.log('╠════════════════════════════════════════════════════════════╣');
+                console.log('║  Los escáneres deben estar en la misma red WiFi            ║');
+                console.log('╚════════════════════════════════════════════════════════════╝');
+                console.log('');
+            });
+
+            return; // Éxito, salir
+        } else {
+            if (result.error === 'EACCES') {
+                console.log(`  → Puerto ${port}: Requiere permisos de administrador`);
+            } else if (result.error === 'EADDRINUSE') {
+                console.log(`  → Puerto ${port}: Ya está en uso`);
+            } else {
+                console.log(`  → Puerto ${port}: Error (${result.error})`);
+            }
+        }
+    }
+
+    // Ningún puerto funcionó
+    serverStatus.running = false;
+    serverStatus.error = 'No se pudo iniciar en ningún puerto (80, 8080, 3000). Ejecuta como Administrador o cierra otras aplicaciones.';
+
+    console.error('');
+    console.error('╔════════════════════════════════════════════════════════════╗');
+    console.error('║  ERROR: No se pudo iniciar el servidor                     ║');
+    console.error('║  Puertos 80, 8080, 3000 no disponibles.                    ║');
+    console.error('║  Ejecuta como Administrador o cierra otras apps.           ║');
+    console.error('╚════════════════════════════════════════════════════════════╝');
+    console.error('');
+}
+
+// Exportar estado del servidor
+module.exports = { serverStatus };
+
+// Iniciar servidor
+startServerWithFallback();

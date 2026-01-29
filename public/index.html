@@ -348,8 +348,10 @@
             <div>
                 <h1>Sistema de Inventario</h1>
                 <span class="status" id="status">● Conectado</span>
+                <span id="tiendaActual" style="display:none; margin-left:15px; padding:4px 10px; background:#8b5cf6; color:white; border-radius:4px; font-size:12px;"></span>
             </div>
             <div class="header-actions">
+                <button class="btn btn-secondary" onclick="mostrarModalHistorico()" style="background:#8b5cf6;color:white;">Historico</button>
                 <button class="btn btn-secondary" onclick="exportarExcel()">Exportar Excel</button>
                 <button class="btn btn-secondary" onclick="mostrarModalMaestro()">Cargar Maestro</button>
                 <button class="btn btn-secondary" onclick="mostrarModalStock()">Cargar Stock Tienda</button>
@@ -450,7 +452,11 @@
             <section class="panel">
                 <div class="panel-header">
                     <span>Items Escaneados</span>
-                    <span id="itemsCount">0</span>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <button class="btn btn-secondary" onclick="mostrarAgregarZona()" style="font-size:12px;padding:6px 12px;">+ Zona</button>
+                        <button class="btn btn-primary" onclick="mostrarAgregarItem()" style="font-size:12px;padding:6px 12px;">+ Item</button>
+                        <span id="itemsCount">0</span>
+                    </div>
                 </div>
                 <div class="panel-content" style="max-height: none; padding: 0;">
                     <div class="filtros" style="padding: 15px; border-bottom: 1px solid #e5e7eb;">
@@ -487,12 +493,41 @@
             <h3>Nueva Sesión</h3>
             <p style="color:#666;margin-bottom:15px;">Esto limpiará todos los datos actuales.</p>
             <div class="form-group">
+                <label>Tienda *</label>
+                <select id="selectTienda" onchange="actualizarNombreSesion()">
+                    <option value="">-- Seleccionar tienda --</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Nombre de la sesión</label>
                 <input type="text" id="nombreSesion" placeholder="Inventario Enero 2024">
+            </div>
+            <div class="form-group">
+                <label>Detalles / Comentarios</label>
+                <textarea id="detallesSesion" placeholder="Observaciones, notas relevantes..." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;height:60px;resize:vertical;"></textarea>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
                 <button class="btn btn-primary" onclick="iniciarSesion()">Iniciar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Agregar Tienda -->
+    <div class="modal" id="modalAgregarTienda">
+        <div class="modal-content">
+            <h3>Agregar Nueva Tienda</h3>
+            <div class="form-group">
+                <label>Número de Almacén *</label>
+                <input type="text" id="nuevaTiendaNumero" placeholder="Ej: 1050">
+            </div>
+            <div class="form-group">
+                <label>Nombre de la Tienda *</label>
+                <input type="text" id="nuevaTiendaNombre" placeholder="Ej: Mall Plaza Norte">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalAgregarTienda()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarAgregarTienda()">Agregar</button>
             </div>
         </div>
     </div>
@@ -593,6 +628,28 @@
         </div>
     </div>
 
+    <!-- Modal Agregar Zona -->
+    <div class="modal" id="modalAgregarZona">
+        <div class="modal-content">
+            <h3>Agregar Zona</h3>
+            <div class="form-group">
+                <label>Asignar a auditor *</label>
+                <select id="nuevaZonaAuditor" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;">
+                    <option value="">-- Selecciona un auditor --</option>
+                </select>
+                <small id="sinAuditoresMsg" style="color:#f59e0b;display:none;margin-top:5px;">No hay auditores conectados. La zona quedará sin asignar.</small>
+            </div>
+            <div class="form-group">
+                <label>Nombre de la zona *</label>
+                <input type="text" id="nuevaZonaNombre" placeholder="Ej: Pasillo 1, Bodega, etc.">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarAgregarZona()">Crear Zona</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Editar Zona -->
     <div class="modal" id="modalEditarZona">
         <div class="modal-content">
@@ -621,13 +678,181 @@
         </div>
     </div>
 
-    <!-- Modal Agregar Item a Zona -->
+    <!-- Modal Histórico -->
+    <div class="modal" id="modalHistorico">
+        <div class="modal-content" style="max-width: 900px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3>Historial de Inventarios</h3>
+                <div>
+                    <button class="btn btn-secondary" onclick="mostrarAgregarTienda()" style="margin-right:10px;">+ Nueva Tienda</button>
+                    <button class="btn btn-primary" onclick="mostrarGuardarHistorico()" style="margin-right:10px;">Guardar Actual</button>
+                    <button class="btn btn-secondary" id="btnGestionUsuarios" onclick="mostrarGestionUsuarios()" style="display:none;">Usuarios</button>
+                </div>
+            </div>
+            <div id="usuarioActualInfo" style="margin-bottom:15px; padding:10px; background:#f3f4f6; border-radius:6px; font-size:13px;"></div>
+            <div style="flex:1; overflow-y:auto;">
+                <table class="items-table" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tienda</th>
+                            <th>Items</th>
+                            <th>Faltantes</th>
+                            <th>Sobrantes</th>
+                            <th>Costo General</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historicoBody">
+                        <tr><td colspan="7" class="empty">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-actions" style="margin-top:15px;">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Guardar en Histórico -->
+    <div class="modal" id="modalGuardarHistorico">
+        <div class="modal-content">
+            <h3>Guardar en Histórico</h3>
+            <p style="color:#666;margin-bottom:15px;">Guarda el resultado del inventario actual</p>
+            <div class="form-group">
+                <label>Nombre de la Tienda *</label>
+                <input type="text" id="guardarTienda" placeholder="Ej: Tienda Centro">
+            </div>
+            <div class="form-group">
+                <label>Notas (opcional)</label>
+                <textarea id="guardarNotas" placeholder="Observaciones..." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;height:80px;resize:vertical;"></textarea>
+            </div>
+            <div style="background:#f3f4f6;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <div style="font-size:13px;color:#666;margin-bottom:8px;">Resumen a guardar:</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+                    <div>Items escaneados: <strong id="resumenItems">0</strong></div>
+                    <div>Zonas: <strong id="resumenZonas">0</strong></div>
+                    <div style="color:#ef4444;">Faltantes: <strong id="resumenFaltantes">0</strong></div>
+                    <div style="color:#22c55e;">Sobrantes: <strong id="resumenSobrantes">0</strong></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalGuardar()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarGuardarHistorico()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Ver Detalle Histórico -->
+    <div class="modal" id="modalDetalleHistorico">
+        <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <h3>Detalle del Inventario</h3>
+            <div id="detalleHistoricoContent"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalDetalle()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Histórico -->
+    <div class="modal" id="modalEditarHistorico">
+        <div class="modal-content">
+            <h3>Editar Registro</h3>
+            <div class="form-group">
+                <label>Nombre de la Tienda</label>
+                <input type="text" id="editHistTienda">
+            </div>
+            <div class="form-group">
+                <label>Notas</label>
+                <textarea id="editHistNotas" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;height:80px;resize:vertical;"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalEditHist()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarEditarHistorico()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Confirmar Eliminar Histórico -->
+    <div class="modal" id="modalEliminarHistorico">
+        <div class="modal-content">
+            <h3>Eliminar Registro</h3>
+            <p style="color:#ef4444;margin-bottom:15px;">Esta acción no se puede deshacer.</p>
+            <p>¿Eliminar el registro de <strong id="elimHistTienda"></strong>?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalElimHist()">Cancelar</button>
+                <button class="btn btn-danger" onclick="confirmarEliminarHistorico()">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gestión de Usuarios -->
+    <div class="modal" id="modalUsuarios">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>Gestión de Usuarios</h3>
+            <button class="btn btn-primary" onclick="mostrarCrearUsuario()" style="margin-bottom:15px;">+ Nuevo Usuario</button>
+            <table class="items-table" style="font-size:0.85rem;">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nombre</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="usuariosBody">
+                    <tr><td colspan="5" class="empty">Cargando...</td></tr>
+                </tbody>
+            </table>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalUsuarios()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Crear/Editar Usuario -->
+    <div class="modal" id="modalEditarUsuario">
+        <div class="modal-content">
+            <h3 id="tituloModalUsuario">Nuevo Usuario</h3>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="editUsuarioUsername" placeholder="usuario123">
+            </div>
+            <div class="form-group">
+                <label>Nombre Completo</label>
+                <input type="text" id="editUsuarioNombre" placeholder="Juan Pérez">
+            </div>
+            <div class="form-group">
+                <label>Contraseña</label>
+                <input type="password" id="editUsuarioPassword" placeholder="Dejar vacío para no cambiar">
+            </div>
+            <div class="form-group">
+                <label>Rol</label>
+                <select id="editUsuarioRol">
+                    <option value="auditor">Auditor</option>
+                    <option value="admin">Administrador</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModalEditUsuario()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarGuardarUsuario()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Agregar Item -->
     <div class="modal" id="modalAgregarItem">
         <div class="modal-content">
-            <h3>Agregar Item a Zona</h3>
-            <p style="color:#666;margin-bottom:15px;">Zona: <strong id="agregarZonaNombre"></strong></p>
+            <h3>Agregar Item</h3>
             <div class="form-group">
-                <label>EAN / Código de Barras</label>
+                <label>Zona *</label>
+                <select id="agregarZonaSelect">
+                    <option value="">-- Seleccionar zona --</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>EAN / Código de Barras *</label>
                 <input type="text" id="agregarEan" placeholder="Escanear o escribir EAN" oninput="buscarEnMaestro()">
             </div>
             <div class="form-group">
@@ -652,6 +877,7 @@
         let ws;
         let todosLosItems = [];
         let todasLasZonas = [];
+        let datosActuales = null; // Estado actual del servidor
         let itemEditando = null;
         let itemEliminando = null;
         let zonaEditando = null;
@@ -689,6 +915,7 @@
                     break;
                 case 'nuevo_escaneo':
                     actualizarDashboard(msg.data.resumen);
+                    cargarItems();
                     break;
                 case 'lista_zonas':
                 case 'lista_zonas_dashboard':
@@ -706,6 +933,7 @@
                 case 'item_actualizado':
                 case 'item_eliminado':
                 case 'item_agregado':
+                case 'zona_creada':
                 case 'zona_actualizada':
                 case 'zona_eliminada':
                     cargarEstado();
@@ -759,6 +987,7 @@
         }
 
         function actualizarDashboard(data) {
+            datosActuales = data; // Guardar estado actual
             document.getElementById('totalItems').textContent = data.totalItems || 0;
             document.getElementById('eansUnicos').textContent = data.eansUnicos || 0;
             document.getElementById('zonasActivas').textContent = data.zonas?.length || 0;
@@ -766,15 +995,29 @@
             document.getElementById('sinMaestro').textContent = data.sinMaestro || 0;
             document.getElementById('maestroCargado').textContent = data.maestroCargado || 0;
 
+            // Mostrar tienda actual si hay sesión activa
+            const tiendaEl = document.getElementById('tiendaActual');
+            if (data.sesionActiva && data.sesionActiva.tienda_nombre) {
+                tiendaEl.textContent = `${data.sesionActiva.tienda_numero ? '[' + data.sesionActiva.tienda_numero + '] ' : ''}${data.sesionActiva.tienda_nombre}`;
+                tiendaEl.style.display = 'inline-block';
+                // Guardar tienda en localStorage para el histórico
+                localStorage.setItem('inventario_tienda', JSON.stringify({
+                    id: data.sesionActiva.tienda_id,
+                    numero_almacen: data.sesionActiva.tienda_numero,
+                    nombre: data.sesionActiva.tienda_nombre
+                }));
+            } else {
+                tiendaEl.style.display = 'none';
+            }
+
             const sinMaestroCard = document.getElementById('sinMaestroCard');
             sinMaestroCard.className = 'stat-card' + (data.sinMaestro > 0 ? ' danger' : '');
 
             todasLasZonas = data.zonas || [];
-            todosLosItems = data.ultimosEscaneos || [];
+            // No sobrescribir todosLosItems aquí, se carga por separado con /api/items
 
             actualizarZonas(data.zonas || [], data.escaneres || []);
             actualizarFiltroZonas();
-            filtrarItems();
 
             // Si hay stock tienda cargado, actualizar comparación
             if (data.stockTiendaCargado) {
@@ -803,9 +1046,8 @@
                                 <div class="zona-auditor">${auditor ? auditor : 'Sin auditor'}</div>
                             </div>
                             <div style="display:flex; gap:5px;">
-                                <button onclick="agregarItemZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#22c55e; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">+ Item</button>
                                 <button onclick="editarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#3b82f6; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Editar</button>
-                                <button onclick="eliminarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">Eliminar</button>
+                                <button onclick="eliminarZona('${zona.id}', '${zona.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px; background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px;">X</button>
                             </div>
                         </div>
                         <div class="zona-stats">
@@ -880,18 +1122,132 @@
         }
 
         // === ACCIONES ===
+        async function cargarItems() {
+            try {
+                const res = await fetch('/api/items');
+                todosLosItems = await res.json();
+                filtrarItems();
+            } catch (e) {
+                console.error('Error cargando items:', e);
+            }
+        }
+
         async function cargarEstado() {
+            // Cargar estado general
             const res = await fetch('/api/estado');
             const data = await res.json();
             actualizarDashboard(data);
+
+            // Cargar todos los items
+            await cargarItems();
         }
 
         function exportarExcel() {
             window.location.href = '/api/exportar';
         }
 
-        function mostrarModalSesion() {
+        let tiendasData = [];
+        let tiendaSeleccionada = null;
+
+        async function mostrarModalSesion() {
+            await cargarTiendas();
+            document.getElementById('nombreSesion').value = '';
+            document.getElementById('selectTienda').value = '';
+            tiendaSeleccionada = null;
             document.getElementById('modalSesion').classList.add('active');
+        }
+
+        async function cargarTiendas() {
+            try {
+                const res = await fetch('/api/tiendas');
+                tiendasData = await res.json();
+                const select = document.getElementById('selectTienda');
+                select.innerHTML = '<option value="">-- Seleccionar tienda --</option>';
+                tiendasData.forEach(t => {
+                    select.innerHTML += `<option value="${t.id}" data-numero="${t.numero_almacen}" data-nombre="${t.nombre}">${t.numero_almacen} - ${t.nombre}</option>`;
+                });
+            } catch (e) {
+                console.error('Error cargando tiendas:', e);
+            }
+        }
+
+        function actualizarNombreSesion() {
+            const select = document.getElementById('selectTienda');
+            const option = select.options[select.selectedIndex];
+
+            if (option && option.value) {
+                const nombre = option.dataset.nombre;
+                const fecha = new Date().toLocaleDateString('es-CL');
+                document.getElementById('nombreSesion').value = `Inventario ${nombre} - ${fecha}`;
+                tiendaSeleccionada = {
+                    id: parseInt(option.value),
+                    numero_almacen: option.dataset.numero,
+                    nombre: nombre
+                };
+            } else {
+                tiendaSeleccionada = null;
+            }
+        }
+
+        let volverAHistorico = false;
+
+        function mostrarAgregarTienda() {
+            // Si viene desde histórico, recordar para volver
+            if (document.getElementById('modalHistorico').classList.contains('active')) {
+                volverAHistorico = true;
+                document.getElementById('modalHistorico').classList.remove('active');
+            }
+            document.getElementById('nuevaTiendaNumero').value = '';
+            document.getElementById('nuevaTiendaNombre').value = '';
+            document.getElementById('modalAgregarTienda').classList.add('active');
+            document.getElementById('nuevaTiendaNumero').focus();
+        }
+
+        function cerrarModalAgregarTienda() {
+            document.getElementById('modalAgregarTienda').classList.remove('active');
+            // Volver al histórico si venía de ahí
+            if (volverAHistorico) {
+                volverAHistorico = false;
+                document.getElementById('modalHistorico').classList.add('active');
+            }
+        }
+
+        async function confirmarAgregarTienda() {
+            const numero = document.getElementById('nuevaTiendaNumero').value.trim();
+            const nombre = document.getElementById('nuevaTiendaNombre').value.trim();
+
+            if (!numero || !nombre) {
+                alert('Número de almacén y nombre son requeridos');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/tiendas', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ numero_almacen: numero, nombre: nombre })
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    alert('Tienda creada: ' + numero + ' - ' + nombre);
+                    document.getElementById('modalAgregarTienda').classList.remove('active');
+
+                    // Volver al histórico o actualizar select de tiendas
+                    if (volverAHistorico) {
+                        volverAHistorico = false;
+                        document.getElementById('modalHistorico').classList.add('active');
+                    } else {
+                        await cargarTiendas();
+                        document.getElementById('selectTienda').value = data.id;
+                        actualizarNombreSesion();
+                    }
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
         }
 
         function mostrarModalMaestro() {
@@ -904,13 +1260,30 @@
 
         async function iniciarSesion() {
             const nombre = document.getElementById('nombreSesion').value;
+            const detalles = document.getElementById('detallesSesion').value.trim();
+
+            if (!tiendaSeleccionada) {
+                alert('Selecciona una tienda');
+                return;
+            }
+
+            // Guardar tienda seleccionada en localStorage para usarla al guardar histórico
+            localStorage.setItem('inventario_tienda', JSON.stringify(tiendaSeleccionada));
+
             await fetch('/api/sesion/nueva', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({nombre})
+                body: JSON.stringify({
+                    nombre: nombre,
+                    detalles: detalles,
+                    tienda_id: tiendaSeleccionada.id,
+                    tienda_nombre: tiendaSeleccionada.nombre,
+                    tienda_numero: tiendaSeleccionada.numero_almacen
+                })
             });
             cerrarModales();
             document.getElementById('nombreSesion').value = '';
+            document.getElementById('detallesSesion').value = '';
         }
 
         async function cargarMaestro() {
@@ -995,6 +1368,91 @@
         }
 
         // === ZONAS ===
+        function mostrarAgregarZona() {
+            document.getElementById('nuevaZonaNombre').value = '';
+
+            // Poblar dropdown con auditores conectados
+            const select = document.getElementById('nuevaZonaAuditor');
+            const msgSinAuditores = document.getElementById('sinAuditoresMsg');
+            select.innerHTML = '<option value="">-- Selecciona un auditor --</option>';
+
+            // Obtener auditores únicos del estado actual (usando datosActuales)
+            const auditoresUnicos = [];
+            const nombresVistos = new Set();
+
+            if (datosActuales && datosActuales.escaneres) {
+                datosActuales.escaneres.forEach(esc => {
+                    const nombreNorm = esc.nombre.toLowerCase().trim();
+                    if (!nombresVistos.has(nombreNorm)) {
+                        nombresVistos.add(nombreNorm);
+                        auditoresUnicos.push({
+                            nombre: esc.nombre,
+                            nombreNormalizado: nombreNorm
+                        });
+                    }
+                });
+            }
+
+            if (auditoresUnicos.length === 0) {
+                msgSinAuditores.style.display = 'block';
+            } else {
+                msgSinAuditores.style.display = 'none';
+                auditoresUnicos.forEach(aud => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(aud);
+                    option.textContent = aud.nombre;
+                    select.appendChild(option);
+                });
+            }
+
+            document.getElementById('modalAgregarZona').classList.add('active');
+            document.getElementById('nuevaZonaNombre').focus();
+        }
+
+        async function confirmarAgregarZona() {
+            const nombre = document.getElementById('nuevaZonaNombre').value.trim();
+            const auditorSelect = document.getElementById('nuevaZonaAuditor');
+            const auditorValue = auditorSelect.value;
+
+            if (!nombre) {
+                alert('Ingresa un nombre para la zona');
+                return;
+            }
+
+            // Parsear auditor seleccionado
+            let auditorNombre = null;
+            let auditorNombreNormalizado = null;
+
+            if (auditorValue) {
+                try {
+                    const auditor = JSON.parse(auditorValue);
+                    auditorNombre = auditor.nombre;
+                    auditorNombreNormalizado = auditor.nombreNormalizado;
+                } catch (e) {}
+            }
+
+            const zonaId = 'zona_' + Date.now();
+
+            const res = await fetch('/api/zona/crear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    zonaId,
+                    nombre,
+                    auditorNombre,
+                    auditorNombreNormalizado
+                })
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                cerrarModales();
+                cargarEstado();
+            } else {
+                alert(result.error || 'Error al crear zona');
+            }
+        }
+
         function editarZona(zonaId, zonaNombre) {
             zonaEditando = zonaId;
             document.getElementById('editZonaNombre').value = zonaNombre;
@@ -1041,14 +1499,17 @@
             cargarEstado();
         }
 
-        // === AGREGAR ITEM A ZONA ===
-        let zonaAgregando = null;
+        // === AGREGAR ITEM ===
         let maestroCache = [];
-        let buscandoMaestro = false;
 
-        function agregarItemZona(zonaId, zonaNombre) {
-            zonaAgregando = zonaId;
-            document.getElementById('agregarZonaNombre').textContent = zonaNombre;
+        function mostrarAgregarItem() {
+            // Poblar select de zonas
+            const select = document.getElementById('agregarZonaSelect');
+            select.innerHTML = '<option value="">-- Seleccionar zona --</option>';
+            todasLasZonas.forEach(z => {
+                select.innerHTML += `<option value="${z.id}">${z.nombre}</option>`;
+            });
+
             document.getElementById('agregarEan').value = '';
             document.getElementById('agregarDesc').value = '';
             document.getElementById('agregarCantidad').value = '1';
@@ -1057,6 +1518,7 @@
             document.getElementById('agregarEan').focus();
         }
 
+        let buscarTimeout = null;
         async function buscarEnMaestro() {
             const ean = document.getElementById('agregarEan').value.trim();
             const infoEl = document.getElementById('infoMaestro');
@@ -1066,32 +1528,44 @@
                 return;
             }
 
-            // Buscar en cache local primero
-            if (maestroCache.length === 0) {
-                const res = await fetch('/api/maestro');
-                const data = await res.json();
-                maestroCache = data.productos || [];
-            }
+            // Debounce para evitar muchas peticiones
+            if (buscarTimeout) clearTimeout(buscarTimeout);
 
-            const producto = maestroCache.find(p => p.ean === ean);
-            if (producto) {
-                document.getElementById('agregarDesc').value = producto.descripcion;
-                infoEl.innerHTML = '<span style="color:#22c55e;">✓ Encontrado en maestro</span>';
-                infoEl.style.background = '#f0fdf4';
-                infoEl.style.display = 'block';
-            } else if (ean.length >= 8) {
-                infoEl.innerHTML = '<span style="color:#f59e0b;">⚠ No encontrado en maestro</span>';
-                infoEl.style.background = '#fefce8';
-                infoEl.style.display = 'block';
+            // Solo buscar cuando el EAN tenga longitud razonable (8+ dígitos)
+            if (ean.length >= 8) {
+                buscarTimeout = setTimeout(async () => {
+                    try {
+                        // Buscar directamente en el servidor
+                        const res = await fetch(`/api/maestro/buscar/${encodeURIComponent(ean)}`);
+                        const data = await res.json();
+
+                        if (data.encontrado && data.producto) {
+                            document.getElementById('agregarDesc').value = data.producto.descripcion;
+                            infoEl.innerHTML = '<span style="color:#22c55e;">✓ Encontrado en maestro</span>';
+                            infoEl.style.background = '#f0fdf4';
+                            infoEl.style.display = 'block';
+                        } else {
+                            infoEl.innerHTML = '<span style="color:#f59e0b;">⚠ No encontrado en maestro</span>';
+                            infoEl.style.background = '#fefce8';
+                            infoEl.style.display = 'block';
+                        }
+                    } catch (e) {
+                        console.error('Error buscando en maestro:', e);
+                    }
+                }, 300);
             }
         }
 
         async function confirmarAgregarItem() {
-            if (!zonaAgregando) return;
-
+            const zonaId = document.getElementById('agregarZonaSelect').value;
             const ean = document.getElementById('agregarEan').value.trim();
             const descripcion = document.getElementById('agregarDesc').value.trim();
             const cantidad = parseInt(document.getElementById('agregarCantidad').value) || 1;
+
+            if (!zonaId) {
+                alert('Selecciona una zona');
+                return;
+            }
 
             if (!ean) {
                 alert('Ingresa un EAN');
@@ -1105,14 +1579,13 @@
                     ean,
                     descripcion: descripcion || 'SIN DESCRIPCION',
                     cantidad,
-                    zonaId: zonaAgregando
+                    zonaId: zonaId
                 })
             });
 
             const result = await res.json();
             if (res.ok) {
                 cerrarModales();
-                zonaAgregando = null;
                 cargarEstado();
             } else {
                 alert(result.error || 'Error al agregar');
@@ -1309,6 +1782,523 @@
                 .catch(() => {});
         }
 
+        // ============================================
+        // HISTORICO Y USUARIOS
+        // ============================================
+        let usuarioActual = null;
+        let historicoData = [];
+        let editandoHistoricoId = null;
+        let eliminandoHistoricoId = null;
+        let editandoUsuarioId = null;
+
+        // Cargar sesión desde GUI al iniciar
+        function cargarSesionGUI() {
+            // Intentar leer sesión del GUI (Electron)
+            const sessionStr = localStorage.getItem('inventario_session');
+            if (sessionStr) {
+                try {
+                    const session = JSON.parse(sessionStr);
+                    const diasExpiracion = 7;
+                    const now = Date.now();
+                    if (now - session.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
+                        usuarioActual = session.usuario;
+                    }
+                } catch (e) {
+                    // Sesión inválida
+                }
+            }
+        }
+
+        // Cargar al inicio
+        cargarSesionGUI();
+
+        // Mostrar modal de histórico
+        async function mostrarModalHistorico() {
+            document.getElementById('modalHistorico').classList.add('active');
+
+            // Recargar sesión por si cambió
+            cargarSesionGUI();
+
+            const esAdmin = usuarioActual && usuarioActual.rol === 'admin';
+
+            if (usuarioActual) {
+                document.getElementById('usuarioActualInfo').innerHTML = `
+                    <span>Usuario: <strong>${usuarioActual.nombre}</strong></span>
+                    <span style="margin-left:15px;padding:3px 8px;background:${usuarioActual.rol === 'admin' ? '#8b5cf6' : '#3b82f6'};color:white;border-radius:4px;font-size:11px;">${usuarioActual.rol}</span>
+                `;
+                // Mostrar botón de usuarios solo para admin
+                document.getElementById('btnGestionUsuarios').style.display = esAdmin ? 'inline-block' : 'none';
+            } else {
+                document.getElementById('usuarioActualInfo').innerHTML = `
+                    <span style="color:#666;">Para editar o eliminar registros, inicia sesión desde la aplicación de escritorio.</span>
+                `;
+                document.getElementById('btnGestionUsuarios').style.display = 'none';
+            }
+
+            await cargarHistorico();
+        }
+
+        async function cargarHistorico() {
+            try {
+                const res = await fetch('/api/historico');
+                historicoData = await res.json();
+                renderHistorico();
+            } catch (e) {
+                document.getElementById('historicoBody').innerHTML = '<tr><td colspan="7" class="empty">Error al cargar</td></tr>';
+            }
+        }
+
+        function renderHistorico() {
+            const tbody = document.getElementById('historicoBody');
+            const esAdmin = usuarioActual && usuarioActual.rol === 'admin';
+
+            if (historicoData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty">Sin registros en el histórico</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = historicoData.map(h => `
+                <tr>
+                    <td>${new Date(h.fecha).toLocaleDateString('es-CL')} ${new Date(h.fecha).toLocaleTimeString('es-CL', {hour:'2-digit',minute:'2-digit'})}</td>
+                    <td>
+                        ${h.numero_almacen ? '<small style="color:#3b82f6;font-weight:600;">[' + h.numero_almacen + ']</small> ' : ''}
+                        <strong>${h.nombre_tienda}</strong>
+                        ${h.nombre_sesion ? '<br><small style="color:#666;">' + h.nombre_sesion + '</small>' : ''}
+                    </td>
+                    <td>${h.total_items_escaneados}</td>
+                    <td style="color:#ef4444;">${h.total_faltantes} <small>(${formatearMoneda(h.costo_faltantes)})</small></td>
+                    <td style="color:#22c55e;">${h.total_sobrantes} <small>(${formatearMoneda(h.costo_sobrantes)})</small></td>
+                    <td style="font-weight:600;color:${h.costo_general >= 0 ? '#22c55e' : '#ef4444'};">${formatearMoneda(h.costo_general)}</td>
+                    <td>
+                        <button class="btn-edit" onclick="verDetalleHistorico(${h.id})" style="font-size:11px;">Ver</button>
+                        <button class="btn-edit" onclick="descargarHistorico(${h.id})" style="font-size:11px;background:#22c55e;">Descargar</button>
+                        ${esAdmin ? `
+                            <button class="btn-edit" onclick="editarHistorico(${h.id})" style="font-size:11px;">Editar</button>
+                            <button class="btn-delete" onclick="eliminarHistorico(${h.id})" style="font-size:11px;">Eliminar</button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function descargarHistorico(id) {
+            window.location.href = `/api/historico/${id}/exportar`;
+        }
+
+        // Login se maneja desde la aplicación de escritorio (GUI)
+        // Las funciones de login del dashboard fueron removidas
+
+        function mostrarGuardarHistorico() {
+            // Cargar tienda de la sesión si existe
+            const tiendaGuardada = localStorage.getItem('inventario_tienda');
+            if (tiendaGuardada) {
+                try {
+                    const tienda = JSON.parse(tiendaGuardada);
+                    document.getElementById('guardarTienda').value = tienda.nombre;
+                    document.getElementById('guardarTienda').dataset.tiendaId = tienda.id;
+                    document.getElementById('guardarTienda').dataset.tiendaNumero = tienda.numero_almacen;
+                } catch (e) {
+                    document.getElementById('guardarTienda').value = '';
+                }
+            } else {
+                document.getElementById('guardarTienda').value = '';
+            }
+
+            document.getElementById('guardarNotas').value = '';
+
+            // Mostrar resumen
+            const comp = comparacionData || { totalFaltantes: 0, totalSobrantes: 0 };
+
+            document.getElementById('resumenItems').textContent = document.getElementById('totalItems').textContent;
+            document.getElementById('resumenZonas').textContent = document.getElementById('zonasActivas').textContent;
+            document.getElementById('resumenFaltantes').textContent = comp.totalFaltantes || 0;
+            document.getElementById('resumenSobrantes').textContent = comp.totalSobrantes || 0;
+
+            document.getElementById('modalGuardarHistorico').classList.add('active');
+        }
+
+        function cerrarModalGuardar() {
+            document.getElementById('modalGuardarHistorico').classList.remove('active');
+        }
+
+        async function confirmarGuardarHistorico() {
+            const tiendaInput = document.getElementById('guardarTienda');
+            const tienda = tiendaInput.value.trim();
+            const notas = document.getElementById('guardarNotas').value.trim();
+
+            if (!tienda) {
+                alert('Ingresa el nombre de la tienda');
+                return;
+            }
+
+            // Obtener datos de tienda si están en el input
+            const tiendaId = tiendaInput.dataset.tiendaId || null;
+            const tiendaNumero = tiendaInput.dataset.tiendaNumero || null;
+
+            try {
+                const res = await fetch('/api/historico', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        tienda_id: tiendaId ? parseInt(tiendaId) : null,
+                        nombre_tienda: tienda,
+                        numero_almacen: tiendaNumero,
+                        notas: notas,
+                        creado_por: usuarioActual?.nombre || 'Anónimo'
+                    })
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    alert('Guardado exitosamente');
+                    cerrarModalGuardar();
+                    cargarHistorico();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        async function verDetalleHistorico(id) {
+            try {
+                const res = await fetch(`/api/historico/${id}`);
+                const h = await res.json();
+
+                const content = document.getElementById('detalleHistoricoContent');
+                content.innerHTML = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">
+                        <div><strong>Tienda:</strong> ${h.numero_almacen ? '[' + h.numero_almacen + '] ' : ''}${h.nombre_tienda}</div>
+                        <div><strong>Fecha:</strong> ${new Date(h.fecha).toLocaleString('es-CL')}</div>
+                        <div><strong>Sesión:</strong> ${h.nombre_sesion || '-'}</div>
+                        <div><strong>Creado por:</strong> ${h.creado_por || '-'}</div>
+                    </div>
+                    ${h.detalles_sesion ? `<div style="background:#f0f9ff;padding:12px;border-radius:8px;margin-bottom:15px;border-left:4px solid #3b82f6;"><strong>Detalles:</strong> ${h.detalles_sesion}</div>` : ''}
+
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+                        <div style="background:#f3f4f6;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.5rem;font-weight:700;">${h.total_items_escaneados}</div>
+                            <div style="font-size:12px;color:#666;">Items Escaneados</div>
+                        </div>
+                        <div style="background:#fef2f2;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.5rem;font-weight:700;color:#ef4444;">${h.total_faltantes}</div>
+                            <div style="font-size:12px;color:#666;">Faltantes</div>
+                        </div>
+                        <div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.5rem;font-weight:700;color:#22c55e;">${h.total_sobrantes}</div>
+                            <div style="font-size:12px;color:#666;">Sobrantes</div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+                        <div style="background:#fef2f2;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.1rem;font-weight:600;color:#ef4444;">${formatearMoneda(h.costo_faltantes)}</div>
+                            <div style="font-size:11px;color:#666;">Costo Faltantes</div>
+                        </div>
+                        <div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.1rem;font-weight:600;color:#22c55e;">${formatearMoneda(h.costo_sobrantes)}</div>
+                            <div style="font-size:11px;color:#666;">Costo Sobrantes</div>
+                        </div>
+                        <div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center;">
+                            <div style="font-size:1.1rem;font-weight:600;color:${h.costo_general >= 0 ? '#22c55e' : '#ef4444'};">${formatearMoneda(h.costo_general)}</div>
+                            <div style="font-size:11px;color:#666;">Costo General</div>
+                        </div>
+                    </div>
+
+                    ${h.notas ? `<div style="background:#f9fafb;padding:12px;border-radius:8px;margin-bottom:15px;"><strong>Notas:</strong><br>${h.notas}</div>` : ''}
+
+                    ${h.detalle_faltantes && h.detalle_faltantes.length > 0 ? `
+                        <details style="margin-bottom:15px;">
+                            <summary style="cursor:pointer;font-weight:600;color:#ef4444;margin-bottom:10px;">Ver Faltantes (${h.detalle_faltantes.length})</summary>
+                            <div style="max-height:200px;overflow-y:auto;">
+                                <table class="items-table" style="font-size:12px;">
+                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Faltan</th></tr></thead>
+                                    <tbody>
+                                        ${h.detalle_faltantes.slice(0, 50).map(f => `
+                                            <tr>
+                                                <td class="ean">${f.ean}</td>
+                                                <td>${f.descripcion}</td>
+                                                <td>${f.cantidadEsperada}</td>
+                                                <td>${f.cantidadEscaneada}</td>
+                                                <td style="color:#ef4444;font-weight:600;">${f.diferencia}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    ` : ''}
+
+                    ${h.detalle_sobrantes && h.detalle_sobrantes.length > 0 ? `
+                        <details>
+                            <summary style="cursor:pointer;font-weight:600;color:#22c55e;margin-bottom:10px;">Ver Sobrantes (${h.detalle_sobrantes.length})</summary>
+                            <div style="max-height:200px;overflow-y:auto;">
+                                <table class="items-table" style="font-size:12px;">
+                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Sobran</th></tr></thead>
+                                    <tbody>
+                                        ${h.detalle_sobrantes.slice(0, 50).map(s => `
+                                            <tr>
+                                                <td class="ean">${s.ean}</td>
+                                                <td>${s.descripcion}</td>
+                                                <td>${s.cantidadEsperada}</td>
+                                                <td>${s.cantidadEscaneada}</td>
+                                                <td style="color:#22c55e;font-weight:600;">+${s.diferencia}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    ` : ''}
+                `;
+
+                document.getElementById('modalDetalleHistorico').classList.add('active');
+            } catch (e) {
+                alert('Error al cargar detalle');
+            }
+        }
+
+        function cerrarModalDetalle() {
+            document.getElementById('modalDetalleHistorico').classList.remove('active');
+        }
+
+        function editarHistorico(id) {
+            const h = historicoData.find(x => x.id === id);
+            if (!h) return;
+
+            editandoHistoricoId = id;
+            document.getElementById('editHistTienda').value = h.nombre_tienda;
+            document.getElementById('editHistNotas').value = h.notas || '';
+            document.getElementById('modalEditarHistorico').classList.add('active');
+        }
+
+        function cerrarModalEditHist() {
+            document.getElementById('modalEditarHistorico').classList.remove('active');
+            editandoHistoricoId = null;
+        }
+
+        async function confirmarEditarHistorico() {
+            if (!editandoHistoricoId) return;
+
+            const tienda = document.getElementById('editHistTienda').value.trim();
+            const notas = document.getElementById('editHistNotas').value.trim();
+
+            if (!tienda) {
+                alert('Ingresa el nombre de la tienda');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/historico/${editandoHistoricoId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ nombre_tienda: tienda, notas: notas })
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    cerrarModalEditHist();
+                    cargarHistorico();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        function eliminarHistorico(id) {
+            const h = historicoData.find(x => x.id === id);
+            if (!h) return;
+
+            eliminandoHistoricoId = id;
+            document.getElementById('elimHistTienda').textContent = h.nombre_tienda;
+            document.getElementById('modalEliminarHistorico').classList.add('active');
+        }
+
+        function cerrarModalElimHist() {
+            document.getElementById('modalEliminarHistorico').classList.remove('active');
+            eliminandoHistoricoId = null;
+        }
+
+        async function confirmarEliminarHistorico() {
+            if (!eliminandoHistoricoId) return;
+
+            try {
+                const res = await fetch(`/api/historico/${eliminandoHistoricoId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    cerrarModalElimHist();
+                    cargarHistorico();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        // ============================================
+        // GESTIÓN DE USUARIOS
+        // ============================================
+        let usuariosData = [];
+
+        async function mostrarGestionUsuarios() {
+            document.getElementById('modalUsuarios').classList.add('active');
+            await cargarUsuarios();
+        }
+
+        async function cargarUsuarios() {
+            try {
+                const res = await fetch('/api/usuarios');
+                usuariosData = await res.json();
+                renderUsuarios();
+            } catch (e) {
+                document.getElementById('usuariosBody').innerHTML = '<tr><td colspan="5" class="empty">Error al cargar</td></tr>';
+            }
+        }
+
+        function renderUsuarios() {
+            const tbody = document.getElementById('usuariosBody');
+
+            if (usuariosData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty">Sin usuarios</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = usuariosData.map(u => `
+                <tr>
+                    <td>${u.username}</td>
+                    <td>${u.nombre}</td>
+                    <td><span style="padding:2px 8px;background:${u.rol === 'admin' ? '#8b5cf6' : '#3b82f6'};color:white;border-radius:4px;font-size:11px;">${u.rol}</span></td>
+                    <td>${u.activo ? '<span style="color:#22c55e;">Activo</span>' : '<span style="color:#ef4444;">Inactivo</span>'}</td>
+                    <td>
+                        <button class="btn-edit" onclick="editarUsuario(${u.id})" style="font-size:11px;">Editar</button>
+                        ${u.username !== 'Andrespachacama' ? `<button class="btn-delete" onclick="eliminarUsuario(${u.id})" style="font-size:11px;">Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function cerrarModalUsuarios() {
+            document.getElementById('modalUsuarios').classList.remove('active');
+        }
+
+        function mostrarCrearUsuario() {
+            editandoUsuarioId = null;
+            document.getElementById('tituloModalUsuario').textContent = 'Nuevo Usuario';
+            document.getElementById('editUsuarioUsername').value = '';
+            document.getElementById('editUsuarioUsername').disabled = false;
+            document.getElementById('editUsuarioNombre').value = '';
+            document.getElementById('editUsuarioPassword').value = '';
+            document.getElementById('editUsuarioPassword').placeholder = 'Contraseña';
+            document.getElementById('editUsuarioRol').value = 'auditor';
+            document.getElementById('modalEditarUsuario').classList.add('active');
+        }
+
+        function editarUsuario(id) {
+            const u = usuariosData.find(x => x.id === id);
+            if (!u) return;
+
+            editandoUsuarioId = id;
+            document.getElementById('tituloModalUsuario').textContent = 'Editar Usuario';
+            document.getElementById('editUsuarioUsername').value = u.username;
+            document.getElementById('editUsuarioUsername').disabled = true;
+            document.getElementById('editUsuarioNombre').value = u.nombre;
+            document.getElementById('editUsuarioPassword').value = '';
+            document.getElementById('editUsuarioPassword').placeholder = 'Dejar vacío para no cambiar';
+            document.getElementById('editUsuarioRol').value = u.rol;
+            document.getElementById('modalEditarUsuario').classList.add('active');
+        }
+
+        function cerrarModalEditUsuario() {
+            document.getElementById('modalEditarUsuario').classList.remove('active');
+            editandoUsuarioId = null;
+        }
+
+        async function confirmarGuardarUsuario() {
+            const username = document.getElementById('editUsuarioUsername').value.trim();
+            const nombre = document.getElementById('editUsuarioNombre').value.trim();
+            const password = document.getElementById('editUsuarioPassword').value;
+            const rol = document.getElementById('editUsuarioRol').value;
+
+            if (!nombre) {
+                alert('Ingresa el nombre');
+                return;
+            }
+
+            if (editandoUsuarioId) {
+                // Actualizar
+                const datos = { nombre, rol };
+                if (password) datos.password = password;
+
+                try {
+                    const res = await fetch(`/api/usuarios/${editandoUsuarioId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(datos)
+                    });
+
+                    const data = await res.json();
+                    if (data.ok) {
+                        cerrarModalEditUsuario();
+                        cargarUsuarios();
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                } catch (e) {
+                    alert('Error de conexión');
+                }
+            } else {
+                // Crear nuevo
+                if (!username || !password) {
+                    alert('Usuario y contraseña son requeridos');
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/usuarios', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ username, password, nombre, rol })
+                    });
+
+                    const data = await res.json();
+                    if (data.ok) {
+                        cerrarModalEditUsuario();
+                        cargarUsuarios();
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                } catch (e) {
+                    alert('Error de conexión');
+                }
+            }
+        }
+
+        async function eliminarUsuario(id) {
+            if (!confirm('¿Eliminar este usuario?')) return;
+
+            try {
+                const res = await fetch(`/api/usuarios/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    cargarUsuarios();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
         // Init
         document.addEventListener('DOMContentLoaded', () => {
             conectar();
@@ -1316,6 +2306,14 @@
             cargarComparacion();
             // Verificar actualizaciones al cargar
             setTimeout(verificarActualizaciones, 3000);
+
+            // Cargar usuario de sesión si existe
+            const sessionData = localStorage.getItem('inventario_usuario');
+            if (sessionData) {
+                try {
+                    usuarioActual = JSON.parse(sessionData);
+                } catch (e) {}
+            }
         });
     </script>
 </body>

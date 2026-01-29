@@ -161,6 +161,26 @@
             background: #dc2626;
         }
 
+        .main-button.error {
+            background: #991b1b;
+            color: white;
+            animation: pulse-error 1.5s infinite;
+        }
+
+        .main-button.error:hover {
+            background: #7f1d1d;
+        }
+
+        @keyframes pulse-error {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+
+        .status-indicator.error {
+            background: #ef4444;
+            animation: pulse-error 1.5s infinite;
+        }
+
         .main-button:active {
             transform: scale(0.98);
         }
@@ -727,7 +747,7 @@
 
             <p class="login-error" id="loginError">Usuario o contraseña incorrectos</p>
 
-            <p class="login-footer">Sistema de Inventario v2.0.6</p>
+            <p class="login-footer">Sistema de Inventario v2.1.0</p>
         </div>
     </div>
 
@@ -823,70 +843,63 @@
     <div class="hotspot-modal" id="hotspotModal">
         <div class="hotspot-content">
             <div class="hotspot-header">
-                <h3>Configurar Red WiFi</h3>
+                <h3>Zona de Cobertura WiFi</h3>
                 <button class="hotspot-close" onclick="cerrarHotspotModal()">✕</button>
             </div>
-            <div style="display:flex; justify-content:center; margin-bottom:16px;">
-                <span class="hotspot-status inactivo" id="hotspotStatus">Inactivo</span>
-            </div>
             <div class="hotspot-form">
-                <div class="hotspot-field">
-                    <label>Nombre de Red (SSID)</label>
-                    <input type="text" id="hotspotNombre" value="InventarioWiFi" placeholder="SSID">
-                </div>
-                <div class="hotspot-field">
-                    <label>Contraseña (mín. 8 caracteres)</label>
-                    <input type="text" id="hotspotPassword" value="inventario123" placeholder="Contraseña">
-                </div>
-                <button class="hotspot-btn crear" id="hotspotBtn" onclick="toggleHotspot()">
-                    Crear Red WiFi
+                <p style="text-align:center; margin-bottom:16px; opacity:0.9; font-size:13px;">
+                    Crea una red WiFi desde tu PC para que los dispositivos escáner se conecten directamente.
+                </p>
+                <button class="hotspot-btn crear" id="hotspotBtn" onclick="abrirConfigHotspot()">
+                    Abrir Configuración de Hotspot
                 </button>
+                <p style="text-align:center; margin-top:12px; opacity:0.7; font-size:11px;">
+                    Se abrirá la configuración de Windows.<br>
+                    Activa "Zona de cobertura móvil" y configura el nombre y contraseña.
+                </p>
             </div>
-            <div class="hotspot-info" id="hotspotInfo">
+            <div class="hotspot-info visible" style="margin-top:16px;">
                 <div class="hotspot-info-row">
-                    <span>Red:</span>
-                    <span id="infoNombre">-</span>
-                </div>
-                <div class="hotspot-info-row">
-                    <span>Contraseña:</span>
-                    <span id="infoPassword">-</span>
-                </div>
-                <div class="hotspot-info-row">
-                    <span>Conectar a:</span>
+                    <span>IP del servidor:</span>
                     <span id="infoIP">-</span>
                 </div>
+                <p style="font-size:11px; opacity:0.6; margin-top:8px; text-align:center;">
+                    Una vez activado el hotspot, los escáneres deben conectarse a esa red WiFi y usar esta IP.
+                </p>
             </div>
-            <p style="font-size:11px; opacity:0.7; margin-top:16px; text-align:center;">Solo disponible en Windows</p>
         </div>
     </div>
 
     <div class="bottom-bar">
-        <span>v2.0.6</span>
+        <span id="versionSpan">v2.1.0</span>
+        <span id="usuarioLogueado" style="color:#22c55e;font-weight:500;"></span>
+        <button class="wifi-btn" onclick="crearBackup()" style="margin-right: 10px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Backup DB
+        </button>
         <button class="wifi-btn" onclick="abrirHotspotModal()">
             <span class="dot" id="hotspotDot"></span>
             Red WiFi
         </button>
-        <span>F. Carrasco</span>
+        <button class="wifi-btn" onclick="cerrarSesionGUI()" style="color:#ef4444;">
+            Salir
+        </button>
     </div>
-
-    <!-- QR Code Library -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
     <script>
         const { ipcRenderer } = require('electron');
+        const QRCode = require('qrcode');
 
         // ============================================
-        // CREDENCIALES - Cambiar aquí para bloquear acceso
+        // LOGIN - Verifica contra la base de datos
         // ============================================
-        const CREDENCIALES = {
-            usuario: 'Andrespachacama',
-            password: '123456'
-        };
+        let usuarioActual = null;
 
-        // ============================================
-        // LOGIN
-        // ============================================
-        function doLogin() {
+        async function doLogin() {
             const userInput = document.getElementById('loginUser');
             const passInput = document.getElementById('loginPass');
             const errorMsg = document.getElementById('loginError');
@@ -907,35 +920,70 @@
             userInput.disabled = true;
             passInput.disabled = true;
 
-            // Simular verificación en servidor (3 segundos)
-            setTimeout(() => {
-                // Verificar credenciales
-                if (user === CREDENCIALES.usuario && pass === CREDENCIALES.password) {
+            try {
+                // Verificar credenciales contra el servidor
+                const response = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.ok) {
                     // Login exitoso
+                    usuarioActual = data.usuario;
                     btnText.textContent = 'Acceso concedido';
+
+                    // Guardar sesión con info del usuario
+                    localStorage.setItem('inventario_session', JSON.stringify({
+                        timestamp: Date.now(),
+                        usuario: data.usuario
+                    }));
+
                     setTimeout(() => {
                         document.getElementById('loginOverlay').classList.add('hidden');
-                        // Guardar sesión
-                        localStorage.setItem('inventario_session', Date.now().toString());
+                        actualizarUIUsuario();
                     }, 500);
                 } else {
-                    // Error
-                    spinner.classList.remove('visible');
-                    btnText.textContent = 'Ingresar';
-                    loginBtn.disabled = false;
-                    userInput.disabled = false;
-                    passInput.disabled = false;
+                    throw new Error(data.error || 'Credenciales inválidas');
+                }
+            } catch (e) {
+                // Error - puede ser que el servidor no está corriendo aún
+                // Permitir login offline con credenciales por defecto para admin
+                if (user === 'Andrespachacama' && pass === '123456') {
+                    usuarioActual = { username: user, nombre: 'Andrés Pachacama', rol: 'admin' };
+                    btnText.textContent = 'Acceso concedido (offline)';
 
-                    errorMsg.classList.add('visible');
-                    userInput.classList.add('error');
-                    passInput.classList.add('error');
+                    localStorage.setItem('inventario_session', JSON.stringify({
+                        timestamp: Date.now(),
+                        usuario: usuarioActual
+                    }));
 
                     setTimeout(() => {
-                        userInput.classList.remove('error');
-                        passInput.classList.remove('error');
-                    }, 400);
+                        document.getElementById('loginOverlay').classList.add('hidden');
+                        actualizarUIUsuario();
+                    }, 500);
+                    return;
                 }
-            }, 3000);
+
+                // Error real
+                spinner.classList.remove('visible');
+                btnText.textContent = 'Ingresar';
+                loginBtn.disabled = false;
+                userInput.disabled = false;
+                passInput.disabled = false;
+
+                errorMsg.textContent = e.message || 'Usuario o contraseña incorrectos';
+                errorMsg.classList.add('visible');
+                userInput.classList.add('error');
+                passInput.classList.add('error');
+
+                setTimeout(() => {
+                    userInput.classList.remove('error');
+                    passInput.classList.remove('error');
+                }, 400);
+            }
         }
 
         // Enter para login
@@ -953,20 +1001,28 @@
             });
 
             // Verificar sesión existente (expira en 7 días)
-            const session = localStorage.getItem('inventario_session');
-            if (session) {
-                const sessionTime = parseInt(session);
-                const now = Date.now();
-                const diasExpiracion = 7;
-                if (now - sessionTime < diasExpiracion * 24 * 60 * 60 * 1000) {
-                    document.getElementById('loginOverlay').classList.add('hidden');
-                } else {
+            const sessionStr = localStorage.getItem('inventario_session');
+            if (sessionStr) {
+                try {
+                    const session = JSON.parse(sessionStr);
+                    const now = Date.now();
+                    const diasExpiracion = 7;
+                    if (now - session.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
+                        usuarioActual = session.usuario;
+                        document.getElementById('loginOverlay').classList.add('hidden');
+                    } else {
+                        localStorage.removeItem('inventario_session');
+                    }
+                } catch (e) {
+                    // Formato antiguo, limpiar
                     localStorage.removeItem('inventario_session');
                 }
             }
         });
 
         let serverRunning = false;
+        let serverError = false;
+        let serverPort = null;
         let dashboardUrl = '';
         let scannerUrl = '';
 
@@ -983,6 +1039,14 @@
             loading.classList.add('visible');
             btnIcon.style.display = 'none';
 
+            // Limpiar estado de error si estamos reintentando
+            if (serverError) {
+                serverError = false;
+                mainButton.classList.remove('error');
+                statusIndicator.classList.remove('error');
+                connectionInfo.classList.remove('visible');
+            }
+
             if (!serverRunning) {
                 btnText.textContent = 'Iniciando...';
 
@@ -990,14 +1054,17 @@
 
                 if (result.success) {
                     serverRunning = true;
+                    serverPort = result.port;
                     dashboardUrl = result.dashboardUrl;
                     scannerUrl = result.scannerUrl;
 
                     updateUI();
-                    showToast('Servidor iniciado');
+                    const portMsg = result.port === 80 ? 'puerto 80' : `puerto ${result.port}`;
+                    showToast(`Servidor iniciado en ${portMsg}`);
                 } else {
+                    serverError = true;
+                    updateUIError(result.error);
                     showToast('Error: ' + result.error);
-                    resetButton();
                 }
             } else {
                 btnText.textContent = 'Deteniendo...';
@@ -1052,12 +1119,47 @@
         function resetButton() {
             btnIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
             btnText.textContent = 'Iniciar Servidor';
+            mainButton.classList.remove('error');
+            serverError = false;
+        }
+
+        function updateUIError(errorMsg) {
+            statusIndicator.classList.remove('running');
+            statusIndicator.classList.add('error');
+            statusText.textContent = 'Error';
+
+            mainButton.classList.add('error');
+            mainButton.classList.remove('start', 'stop');
+            btnIcon.innerHTML = '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
+            btnText.textContent = 'Reintentar';
+
+            // Mostrar mensaje de error en el área de conexión
+            connectionInfo.classList.add('visible');
+            document.getElementById('dashboardUrl').textContent = 'Error al iniciar';
+            document.getElementById('scannerUrl').textContent = errorMsg;
+            document.getElementById('qrcode').innerHTML = '<p style="color:#ef4444;font-size:12px;text-align:center;">No se pudo iniciar.<br>Intenta como Administrador<br>o cierra otras apps que usen el puerto.</p>';
         }
 
         function generateQR(url) {
             const qrContainer = document.getElementById('qrcode');
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
-            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR Code">`;
+            qrContainer.innerHTML = ''; // Limpiar contenedor
+
+            // Usar librería local QRCode (funciona sin internet)
+            QRCode.toCanvas(url, {
+                width: 160,
+                margin: 0,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }, (err, canvas) => {
+                if (err) {
+                    console.error('Error generando QR:', err);
+                    qrContainer.innerHTML = '<p style="color:#888;font-size:12px;">Error generando QR</p>';
+                    return;
+                }
+                qrContainer.appendChild(canvas);
+            });
         }
 
         function openUrl(url) {
@@ -1095,8 +1197,6 @@
         // ============================================
         // HOTSPOT WIFI
         // ============================================
-        let hotspotActivo = false;
-
         function abrirHotspotModal() {
             document.getElementById('hotspotModal').classList.add('visible');
             cargarEstadoHotspot();
@@ -1109,91 +1209,55 @@
         async function cargarEstadoHotspot() {
             try {
                 const estado = await ipcRenderer.invoke('hotspot-status');
-                hotspotActivo = estado.activo;
-                actualizarUIHotspot(estado);
-            } catch (e) {
-                // Si falla, ocultar sección
-                document.getElementById('hotspotCard').style.display = 'none';
-            }
-        }
-
-        function actualizarUIHotspot(estado) {
-            const statusEl = document.getElementById('hotspotStatus');
-            const btn = document.getElementById('hotspotBtn');
-            const info = document.getElementById('hotspotInfo');
-            const nombreInput = document.getElementById('hotspotNombre');
-            const passInput = document.getElementById('hotspotPassword');
-            const dot = document.getElementById('hotspotDot');
-
-            if (estado.activo) {
-                statusEl.textContent = 'Activo';
-                statusEl.className = 'hotspot-status activo';
-                btn.textContent = 'Detener Red';
-                btn.className = 'hotspot-btn detener';
-                info.classList.add('visible');
-                if (dot) dot.classList.add('activo');
-
-                document.getElementById('infoNombre').textContent = estado.nombre;
-                document.getElementById('infoPassword').textContent = estado.password;
                 document.getElementById('infoIP').textContent = `http://${estado.ip}:3000`;
-
-                nombreInput.disabled = true;
-                passInput.disabled = true;
-            } else {
-                statusEl.textContent = 'Inactivo';
-                statusEl.className = 'hotspot-status inactivo';
-                btn.textContent = 'Crear Red WiFi';
-                btn.className = 'hotspot-btn crear';
-                info.classList.remove('visible');
-                if (dot) dot.classList.remove('activo');
-
-                nombreInput.disabled = false;
-                passInput.disabled = false;
+            } catch (e) {
+                console.log('Error cargando estado hotspot:', e);
             }
         }
 
-        async function toggleHotspot() {
+        async function abrirConfigHotspot() {
             const btn = document.getElementById('hotspotBtn');
             btn.disabled = true;
+            btn.textContent = 'Abriendo...';
 
             try {
-                if (hotspotActivo) {
-                    btn.textContent = 'Deteniendo...';
-                    const result = await ipcRenderer.invoke('hotspot-detener');
-                    if (result.ok) {
-                        hotspotActivo = false;
-                        showToast('Red WiFi detenida');
-                    }
+                const result = await ipcRenderer.invoke('hotspot-abrir-config');
+                if (result.ok) {
+                    showToast('Configuración abierta');
                 } else {
-                    const nombre = document.getElementById('hotspotNombre').value.trim();
-                    const password = document.getElementById('hotspotPassword').value;
-
-                    if (!nombre || password.length < 8) {
-                        showToast('Contraseña mínimo 8 caracteres');
-                        btn.disabled = false;
-                        return;
-                    }
-
-                    btn.textContent = 'Creando...';
-                    const result = await ipcRenderer.invoke('hotspot-crear', { nombre, password });
-
-                    if (result.ok) {
-                        hotspotActivo = true;
-                        showToast('Red WiFi creada');
-                    } else {
-                        showToast(result.error || 'Error al crear red');
-                    }
+                    showToast(result.error || 'Error al abrir configuración');
                 }
-                cargarEstadoHotspot();
             } catch (e) {
                 showToast('Error: ' + e.message);
             }
 
             btn.disabled = false;
+            btn.textContent = 'Abrir Configuración de Hotspot';
         }
 
-        // Cargar estado del hotspot al iniciar
+        // Cargar IP al iniciar
         cargarEstadoHotspot();
+
+        // ============================================
+        // BACKUP DE BASE DE DATOS
+        // ============================================
+        async function crearBackup() {
+            showToast('Preparando backup...');
+
+            try {
+                const result = await ipcRenderer.invoke('backup-database');
+
+                if (result.canceled) {
+                    showToast('Backup cancelado');
+                } else if (result.ok) {
+                    showToast('Backup guardado correctamente');
+                } else {
+                    showToast('Error: ' + (result.error || 'No se pudo crear el backup'));
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message);
+            }
+        }
 
         // ============================================
         // AUTO-UPDATER
@@ -1277,10 +1341,36 @@
 
         // Mostrar versión actual en el footer
         ipcRenderer.invoke('get-version').then(version => {
-            const versionSpan = document.querySelector('.bottom-bar span:first-child');
+            const versionSpan = document.getElementById('versionSpan');
             if (versionSpan) {
                 versionSpan.textContent = 'v' + version;
             }
+        });
+
+        // Mostrar usuario logueado
+        function actualizarUIUsuario() {
+            const usuarioSpan = document.getElementById('usuarioLogueado');
+            if (usuarioActual && usuarioSpan) {
+                const rolColor = usuarioActual.rol === 'admin' ? '#8b5cf6' : '#3b82f6';
+                usuarioSpan.innerHTML = `${usuarioActual.nombre} <span style="background:${rolColor};color:white;padding:1px 6px;border-radius:3px;font-size:9px;margin-left:4px;">${usuarioActual.rol}</span>`;
+            }
+        }
+
+        // Cerrar sesión del GUI
+        function cerrarSesionGUI() {
+            if (confirm('¿Cerrar sesión?')) {
+                localStorage.removeItem('inventario_session');
+                usuarioActual = null;
+                document.getElementById('loginOverlay').classList.remove('hidden');
+                document.getElementById('loginUser').value = '';
+                document.getElementById('loginPass').value = '';
+                document.getElementById('usuarioLogueado').innerHTML = '';
+            }
+        }
+
+        // Al cargar, mostrar usuario si hay sesión
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(actualizarUIUsuario, 100);
         });
     </script>
 </body>
