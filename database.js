@@ -108,6 +108,15 @@ async function initDatabase() {
         // La columna ya existe, ignorar
     }
 
+    // Tabla para estado de sesión activa (persistencia)
+    db.run(`
+        CREATE TABLE IF NOT EXISTS estado_sesion (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            datos TEXT NOT NULL,
+            actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+
     // Agregar columna detalle_items para guardar todos los items escaneados
     try {
         db.run(`ALTER TABLE historico ADD COLUMN detalle_items TEXT`);
@@ -407,6 +416,57 @@ function isReady() {
     return db !== null;
 }
 
+// ============================================
+// FUNCIONES DE ESTADO DE SESIÓN
+// ============================================
+
+function guardarEstadoSesion(estado) {
+    try {
+        if (!db) return { ok: false, error: 'Base de datos no inicializada' };
+
+        const datos = JSON.stringify(estado);
+
+        // Usar REPLACE para insertar o actualizar (siempre id=1)
+        db.run(`
+            INSERT OR REPLACE INTO estado_sesion (id, datos, actualizado_en)
+            VALUES (1, ?, datetime('now'))
+        `, [datos]);
+
+        saveDatabase();
+        return { ok: true };
+    } catch (e) {
+        console.error('Error guardando estado en DB:', e.message);
+        return { ok: false, error: e.message };
+    }
+}
+
+function cargarEstadoSesion() {
+    try {
+        if (!db) return null;
+
+        const row = getOne('SELECT datos FROM estado_sesion WHERE id = 1');
+        if (row && row.datos) {
+            return JSON.parse(row.datos);
+        }
+        return null;
+    } catch (e) {
+        console.error('Error cargando estado de DB:', e.message);
+        return null;
+    }
+}
+
+function limpiarEstadoSesion() {
+    try {
+        if (!db) return { ok: false, error: 'Base de datos no inicializada' };
+
+        db.run('DELETE FROM estado_sesion WHERE id = 1');
+        saveDatabase();
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
 module.exports = {
     initDatabase,
     isReady,
@@ -431,5 +491,9 @@ module.exports = {
     eliminarHistorico,
     // Backup
     obtenerRutaDB,
-    crearBackup
+    crearBackup,
+    // Estado de sesión
+    guardarEstadoSesion,
+    cargarEstadoSesion,
+    limpiarEstadoSesion
 };

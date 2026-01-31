@@ -271,10 +271,23 @@
             font-weight: 700;
             font-size: 15px;
         }
+        .scan-counts {
+            text-align: right;
+        }
         .scan-count {
             font-size: 28px;
             font-weight: 700;
             color: #333;
+            line-height: 1;
+        }
+        .zona-count {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        .zona-count span {
+            font-weight: 600;
+            color: #3b82f6;
         }
 
         /* Zona Bar */
@@ -488,7 +501,124 @@
         .modal-body {
             padding: 16px;
         }
+
+        /* Camera Scanner */
+        .camera-btn {
+            padding: 18px;
+            font-size: 18px;
+            font-weight: 700;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .camera-btn:active {
+            background: #2563eb;
+        }
+        .camera-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .camera-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #000;
+            z-index: 200;
+            flex-direction: column;
+        }
+        .camera-modal.active {
+            display: flex;
+        }
+        .camera-header {
+            background: #111;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        .camera-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .camera-close {
+            background: #333;
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .camera-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        #camera-reader {
+            width: 100%;
+            max-width: 500px;
+        }
+        #camera-reader video {
+            border-radius: 0 !important;
+        }
+        .camera-status {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .camera-status.success {
+            background: #22c55e;
+        }
+        .camera-status.cooldown {
+            background: #f59e0b;
+        }
+        .camera-last-scan {
+            background: #111;
+            padding: 16px;
+            color: white;
+            text-align: center;
+        }
+        .camera-last-scan .ean {
+            font-family: monospace;
+            font-size: 24px;
+            font-weight: 700;
+            color: #22c55e;
+        }
+        .camera-last-scan .desc {
+            font-size: 13px;
+            color: #999;
+            margin-top: 4px;
+        }
+        .camera-instructions {
+            color: #888;
+            font-size: 13px;
+            text-align: center;
+            padding: 10px;
+            background: #111;
+        }
     </style>
+    <!-- html5-qrcode library for barcode scanning -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
     <!-- LOGIN -->
@@ -532,7 +662,10 @@
                     <div class="user-status" id="userStatus">Conectado</div>
                 </div>
             </div>
-            <div class="scan-count" id="scanCount">0</div>
+            <div class="scan-counts">
+                <div class="scan-count" id="scanCount">0</div>
+                <div class="zona-count">Zona: <span id="zonaCount">0</span></div>
+            </div>
         </div>
 
         <div class="zona-bar" onclick="abrirModalZonas()">
@@ -549,6 +682,16 @@
             <div class="input-row">
                 <input type="text" class="ean-input" id="inputEan" placeholder="Código EAN" inputmode="numeric" autocomplete="off">
                 <button class="ok-btn" onclick="enviarEscaneo()">OK</button>
+                <button class="camera-btn" onclick="abrirCamara()" title="Escanear con cámara">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="6" width="20" height="14" rx="2"/>
+                        <circle cx="12" cy="13" r="4"/>
+                        <path d="M6 6V4a1 1 0 0 1 1-1h3"/>
+                    </svg>
+                </button>
+            </div>
+            <div style="text-align:center; margin-top:8px;">
+                <span style="font-size:11px; color:#3b82f6; background:#eff6ff; padding:2px 8px; border-radius:10px;">CÁMARA (BETA)</span>
             </div>
         </div>
 
@@ -589,6 +732,25 @@
                 </div>
                 <div id="modalZonaList"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL CÁMARA -->
+    <div class="camera-modal" id="cameraModal">
+        <div class="camera-header">
+            <h3>Escáner de Cámara (BETA)</h3>
+            <button class="camera-close" onclick="cerrarCamara()">✕</button>
+        </div>
+        <div class="camera-instructions">
+            Apunta al código de barras · Se escaneará automáticamente
+        </div>
+        <div class="camera-container">
+            <div id="camera-reader"></div>
+            <div class="camera-status" id="cameraStatus">Iniciando cámara...</div>
+        </div>
+        <div class="camera-last-scan" id="cameraLastScan" style="display:none;">
+            <div class="ean" id="cameraLastEan">-</div>
+            <div class="desc" id="cameraLastDesc">-</div>
         </div>
     </div>
 
@@ -658,6 +820,7 @@
         let colaPendientes = [];
         let zonasDisponibles = [];
         let totalEscaneos = 0;
+        let totalZona = 0;
         let mostrandoHistorial = false;
 
         // === WEBSOCKET ===
@@ -706,6 +869,7 @@
                 case 'zona_asignada':
                     zonaActual = msg.data.zonaId;
                     zonaNombre = msg.data.zonaNombre;
+                    totalZona = msg.data.totalItems || 0;
                     actualizarZonaUI();
                     cerrarModal();
                     if (document.getElementById('zonaScreen').style.display !== 'none') {
@@ -718,12 +882,19 @@
                 case 'escaneo_ok':
                     const item = msg.data.item;
                     totalEscaneos = msg.data.totalEscaner;
+                    totalZona = msg.data.totalZona || (totalZona + 1);
                     mostrarUltimoEscaneo(item);
                     agregarHistorial(item);
                     document.getElementById('scanCount').textContent = totalEscaneos;
-                    playBeep(item.existeEnMaestro);
-                    if (navigator.vibrate) {
-                        navigator.vibrate(item.existeEnMaestro ? 50 : [100, 50, 100]);
+                    document.getElementById('zonaCount').textContent = totalZona;
+                    // Actualizar info en cámara si está activa
+                    actualizarCameraLastScan(item);
+                    // Solo beep si NO estamos en modo cámara (la cámara ya hizo beep)
+                    if (!camaraActiva) {
+                        playBeep(item.existeEnMaestro);
+                        if (navigator.vibrate) {
+                            navigator.vibrate(item.existeEnMaestro ? 50 : [100, 50, 100]);
+                        }
                     }
                     break;
 
@@ -808,6 +979,7 @@
         function actualizarZonaUI() {
             document.getElementById('zonaBarName').textContent = zonaNombre || 'Sin zona';
             document.getElementById('historyZona').textContent = zonaNombre || '-';
+            document.getElementById('zonaCount').textContent = totalZona;
         }
 
         function actualizarListaZonas() {
@@ -1033,6 +1205,159 @@
             });
         }
 
+        // === CÁMARA SCANNER ===
+        let html5QrCode = null;
+        let camaraActiva = false;
+        let ultimoEscaneoTime = 0;
+        const COOLDOWN_MS = 1500; // 1.5 segundos entre escaneos
+
+        async function abrirCamara() {
+            if (!zonaActual) {
+                alert('Primero selecciona una zona');
+                return;
+            }
+
+            // Init audio on user interaction
+            initAudio();
+
+            document.getElementById('cameraModal').classList.add('active');
+            document.getElementById('cameraStatus').textContent = 'Iniciando cámara...';
+            document.getElementById('cameraStatus').className = 'camera-status';
+            document.getElementById('cameraLastScan').style.display = 'none';
+
+            try {
+                html5QrCode = new Html5Qrcode("camera-reader");
+
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 280, height: 120 },
+                    aspectRatio: 1.0,
+                    formatsToSupport: [
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.UPC_A,
+                        Html5QrcodeSupportedFormats.UPC_E,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                        Html5QrcodeSupportedFormats.CODE_39,
+                        Html5QrcodeSupportedFormats.CODE_93,
+                        Html5QrcodeSupportedFormats.ITF
+                    ]
+                };
+
+                // Intentar usar cámara trasera primero
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                );
+
+                camaraActiva = true;
+                document.getElementById('cameraStatus').textContent = 'Listo - Apunta al código de barras';
+
+            } catch (err) {
+                console.error('Error iniciando cámara:', err);
+                document.getElementById('cameraStatus').textContent = 'Error: ' + (err.message || 'No se pudo acceder a la cámara');
+                document.getElementById('cameraStatus').className = 'camera-status';
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            const ahora = Date.now();
+
+            // Verificar cooldown
+            if (ahora - ultimoEscaneoTime < COOLDOWN_MS) {
+                return; // Ignorar, aún en cooldown
+            }
+
+            ultimoEscaneoTime = ahora;
+
+            // Limpiar el código (solo números para EAN)
+            const ean = decodedText.replace(/[^0-9]/g, '');
+
+            if (!ean || ean.length < 8) {
+                return; // Código muy corto, ignorar
+            }
+
+            console.log('Código escaneado:', ean, decodedResult.result.format.formatName);
+
+            // Feedback visual
+            document.getElementById('cameraStatus').textContent = '✓ Escaneado!';
+            document.getElementById('cameraStatus').className = 'camera-status success';
+
+            // Mostrar último escaneo
+            document.getElementById('cameraLastScan').style.display = 'block';
+            document.getElementById('cameraLastEan').textContent = ean;
+            document.getElementById('cameraLastDesc').textContent = 'Enviando...';
+
+            // Enviar escaneo
+            enviarEscaneoDesdeCamera(ean);
+
+            // Beep y vibración
+            playBeep(true);
+            if (navigator.vibrate) {
+                navigator.vibrate(100);
+            }
+
+            // Mostrar cooldown
+            setTimeout(() => {
+                if (camaraActiva) {
+                    document.getElementById('cameraStatus').textContent = 'Listo - Apunta al siguiente código';
+                    document.getElementById('cameraStatus').className = 'camera-status';
+                }
+            }, COOLDOWN_MS);
+        }
+
+        function onScanFailure(error) {
+            // Ignorar errores de "no code found" - son normales
+        }
+
+        function enviarEscaneoDesdeCamera(ean) {
+            if (!conectado || !escanerId) {
+                guardarOffline(ean);
+                document.getElementById('cameraLastDesc').textContent = 'Guardado offline';
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                tipo: 'escanear',
+                data: { escanerId, ean }
+            }));
+        }
+
+        async function cerrarCamara() {
+            if (html5QrCode && camaraActiva) {
+                try {
+                    await html5QrCode.stop();
+                } catch (e) {
+                    console.log('Error deteniendo cámara:', e);
+                }
+                camaraActiva = false;
+            }
+            document.getElementById('cameraModal').classList.remove('active');
+
+            // Volver al input normal
+            setTimeout(() => {
+                document.getElementById('inputEan').focus();
+            }, 100);
+        }
+
+        // Actualizar descripción cuando llega respuesta del servidor (para cámara)
+        function actualizarCameraLastScan(item) {
+            if (camaraActiva && document.getElementById('cameraLastScan').style.display !== 'none') {
+                const lastEan = document.getElementById('cameraLastEan').textContent;
+                if (lastEan === item.ean) {
+                    document.getElementById('cameraLastDesc').textContent = item.descripcion || 'Sin descripción';
+                    if (!item.existeEnMaestro) {
+                        document.getElementById('cameraLastEan').style.color = '#f59e0b';
+                        document.getElementById('cameraLastDesc').textContent = '⚠ No encontrado en maestro';
+                    } else {
+                        document.getElementById('cameraLastEan').style.color = '#22c55e';
+                    }
+                }
+            }
+        }
+
         // === INIT ===
         document.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('nombreUsuario');
@@ -1054,6 +1379,11 @@
                 if (!conectado || !ws || ws.readyState !== WebSocket.OPEN) {
                     console.log('Reconectando al volver...');
                     conectar();
+                }
+            } else {
+                // Si la página se oculta, cerrar cámara para ahorrar batería
+                if (camaraActiva) {
+                    cerrarCamara();
                 }
             }
         });

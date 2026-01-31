@@ -18,30 +18,41 @@ autoUpdater.autoInstallOnAppQuit = true;
 // Obtener versión actual
 const appVersion = require('./package.json').version;
 
-// Obtener IP local (prioriza IP del hotspot)
+// Obtener IP local (prioriza IP del hotspot, ignora VPNs)
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     let hotspotIP = null;
-    let regularIP = null;
+    let wifiIP = null;
+    let anyLocalIP = null;
 
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                // IP típica del hotspot de Windows (192.168.137.x)
-                if (iface.address.startsWith('192.168.137.')) {
-                    hotspotIP = iface.address;
-                } else if (!regularIP) {
-                    regularIP = iface.address;
+                const addr = iface.address;
+
+                // Ignorar IPs de VPN (Tailscale usa 100.x.x.x)
+                if (addr.startsWith('100.')) continue;
+
+                // Prioridad 1: Hotspot de Windows (192.168.137.x)
+                if (addr.startsWith('192.168.137.')) {
+                    hotspotIP = addr;
+                }
+                // Prioridad 2: Red local típica (WiFi/Ethernet)
+                else if (addr.startsWith('192.168.') || addr.startsWith('10.') || addr.startsWith('172.')) {
+                    if (!wifiIP) wifiIP = addr;
+                }
+                // Prioridad 3: Cualquier otra IP local
+                else if (!anyLocalIP) {
+                    anyLocalIP = addr;
                 }
             }
         }
     }
 
-    // Priorizar IP del hotspot si existe
-    return hotspotIP || regularIP || 'localhost';
+    return hotspotIP || wifiIP || anyLocalIP || 'localhost';
 }
 
-// Obtener todas las IPs disponibles
+// Obtener todas las IPs disponibles (excluye VPNs)
 function getAllIPs() {
     const interfaces = os.networkInterfaces();
     const ips = [];
@@ -49,6 +60,9 @@ function getAllIPs() {
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
+                // Ignorar IPs de VPN (Tailscale)
+                if (iface.address.startsWith('100.')) continue;
+
                 ips.push({
                     name: name,
                     address: iface.address,
@@ -153,6 +167,15 @@ ipcMain.handle('start-server', async () => {
 // Detener servidor
 ipcMain.handle('stop-server', async () => {
     if (serverProcess) {
+        // Guardar estado antes de detener
+        try {
+            const server = require('./server.js');
+            if (server.guardarEstado) {
+                server.guardarEstado();
+            }
+        } catch (e) {
+            console.error('Error guardando estado:', e.message);
+        }
         // El servidor corre en el mismo proceso, no se puede detener individualmente
         // Solo marcamos como no activo
         serverProcess = null;
@@ -403,6 +426,18 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+    // Guardar estado antes de cerrar (importante para Windows)
+    if (serverProcess) {
+        try {
+            const server = require('./server.js');
+            if (server.guardarEstado) {
+                server.guardarEstado();
+                console.log('Estado guardado al cerrar ventanas');
+            }
+        } catch (e) {
+            console.error('Error guardando estado:', e.message);
+        }
+    }
     app.quit();
 });
 
@@ -414,5 +449,16 @@ app.on('activate', () => {
 
 // Cleanup al cerrar
 app.on('before-quit', () => {
-    // Cleanup si es necesario
+    // Guardar estado del servidor antes de cerrar
+    if (serverProcess) {
+        try {
+            const server = require('./server.js');
+            if (server.guardarEstado) {
+                server.guardarEstado();
+                console.log('Estado guardado antes de cerrar');
+            }
+        } catch (e) {
+            console.error('Error guardando estado:', e.message);
+        }
+    }
 });

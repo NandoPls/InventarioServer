@@ -24,6 +24,15 @@
             align-items: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            height: 40px;
+            width: auto;
+        }
         .header h1 { font-size: 1.5rem; }
         .header .status { font-size: 0.875rem; color: #22c55e; }
         .header .status.off { color: #ef4444; }
@@ -345,10 +354,13 @@
 
     <div class="container">
         <header class="header">
-            <div>
-                <h1>Sistema de Inventario</h1>
-                <span class="status" id="status">● Conectado</span>
-                <span id="tiendaActual" style="display:none; margin-left:15px; padding:4px 10px; background:#8b5cf6; color:white; border-radius:4px; font-size:12px;"></span>
+            <div class="header-left">
+                <img src="/logo.jpg" alt="GRYLAN S.A" class="header-logo">
+                <div>
+                    <h1>Sistema de inventario interno de Grylan</h1>
+                    <span class="status" id="status">● Conectado</span>
+                    <span id="tiendaActual" style="display:none; margin-left:15px; padding:4px 10px; background:#8b5cf6; color:white; border-radius:4px; font-size:12px;"></span>
+                </div>
             </div>
             <div class="header-actions">
                 <button class="btn btn-secondary" onclick="mostrarModalHistorico()" style="background:#8b5cf6;color:white;">Historico</button>
@@ -372,9 +384,9 @@
                 <div class="stat-value" id="zonasActivas">0</div>
                 <div class="stat-label">Zonas</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" style="cursor:pointer;" onclick="mostrarModalAuditores()">
                 <div class="stat-value" id="escaneres">0</div>
-                <div class="stat-label">Auditores</div>
+                <div class="stat-label">Auditores <span style="font-size:10px;">&#9432;</span></div>
             </div>
             <div class="stat-card" id="sinMaestroCard">
                 <div class="stat-value" id="sinMaestro">0</div>
@@ -674,6 +686,19 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
                 <button class="btn btn-danger" onclick="confirmarEliminarZona()">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Auditores -->
+    <div class="modal" id="modalAuditores">
+        <div class="modal-content" style="max-width:500px;">
+            <h3>Auditores Conectados</h3>
+            <div id="listaAuditores" style="margin:15px 0; max-height:400px; overflow-y:auto;">
+                <p style="color:#666;">Cargando...</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
             </div>
         </div>
     </div>
@@ -1150,11 +1175,73 @@
         let tiendaSeleccionada = null;
 
         async function mostrarModalSesion() {
+            // Verificar si hay datos activos que se perderían
+            const hayDatos = datosActuales && (
+                datosActuales.totalItems > 0 ||
+                (datosActuales.zonas && datosActuales.zonas.length > 0)
+            );
+
+            if (hayDatos) {
+                const confirmar = confirm(
+                    '⚠️ ATENCIÓN: Hay una sesión activa con datos.\n\n' +
+                    `• ${datosActuales.totalItems || 0} items escaneados\n` +
+                    `• ${datosActuales.zonas?.length || 0} zonas creadas\n\n` +
+                    'Al iniciar una nueva sesión se BORRARÁN los items y zonas actuales.\n' +
+                    '(El maestro y stock de tienda se mantendrán)\n\n' +
+                    '¿Deseas continuar?'
+                );
+                if (!confirmar) return;
+            }
+
             await cargarTiendas();
             document.getElementById('nombreSesion').value = '';
             document.getElementById('selectTienda').value = '';
             tiendaSeleccionada = null;
             document.getElementById('modalSesion').classList.add('active');
+        }
+
+        async function mostrarModalAuditores() {
+            document.getElementById('modalAuditores').classList.add('active');
+            document.getElementById('listaAuditores').innerHTML = '<p style="color:#666;">Cargando...</p>';
+
+            try {
+                const res = await fetch('/api/auditores');
+                const auditores = await res.json();
+
+                if (auditores.length === 0) {
+                    document.getElementById('listaAuditores').innerHTML = `
+                        <div style="text-align:center; padding:20px; color:#666;">
+                            <p>No hay auditores registrados</p>
+                            <p style="font-size:12px; margin-top:10px;">Los auditores aparecen cuando se conectan desde el escáner móvil</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div style="display:flex; flex-direction:column; gap:10px;">';
+                auditores.forEach(aud => {
+                    const estadoColor = aud.conectado ? '#22c55e' : '#999';
+                    const estadoTexto = aud.conectado ? 'Conectado' : 'Desconectado';
+                    html += `
+                        <div style="background:#f9fafb; padding:12px; border-radius:8px; border-left:4px solid ${estadoColor};">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <strong style="font-size:15px;">${aud.nombre}</strong>
+                                <span style="font-size:12px; color:${estadoColor};">● ${estadoTexto}</span>
+                            </div>
+                            <div style="font-size:13px; color:#666; margin-top:5px;">
+                                ${aud.zonaActual ? `Zona: <strong>${aud.zonaActual}</strong>` : 'Sin zona asignada'}
+                            </div>
+                            <div style="font-size:12px; color:#888; margin-top:3px;">
+                                Items escaneados: <strong>${aud.itemsEscaneados}</strong>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                document.getElementById('listaAuditores').innerHTML = html;
+            } catch (e) {
+                document.getElementById('listaAuditores').innerHTML = '<p style="color:#ef4444;">Error al cargar auditores</p>';
+            }
         }
 
         async function cargarTiendas() {

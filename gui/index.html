@@ -55,19 +55,14 @@
         }
 
         .logo {
-            width: 64px;
-            height: 64px;
-            background: #333;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 180px;
+            height: auto;
             margin: 0 auto 12px;
         }
 
-        .logo svg {
-            width: 32px;
-            height: 32px;
+        .logo img {
+            width: 100%;
+            height: auto;
         }
 
         h1 {
@@ -772,14 +767,10 @@
     <div class="container">
         <header class="header">
             <div class="logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="4" rx="1"></rect>
-                    <rect x="3" y="10" width="18" height="4" rx="1"></rect>
-                    <rect x="3" y="16" width="18" height="4" rx="1"></rect>
-                </svg>
+                <img src="logo.jpg" alt="GRYLAN S.A" onerror="this.src='http://localhost:3000/logo.jpg'">
             </div>
-            <h1>Servidor de Inventario</h1>
-            <p class="subtitle">Sistema de escaneo distribuido</p>
+            <h1>Sistema de Inventario</h1>
+            <p class="subtitle">GRYLAN S.A</p>
         </header>
 
         <div class="status-card">

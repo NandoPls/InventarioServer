@@ -17,6 +17,8 @@ let dbReady = false;
 database.initDatabase().then(() => {
     dbReady = true;
     console.log('Base de datos lista');
+    // Cargar estado de sesión anterior
+    cargarEstadoDesdeDB();
 }).catch(err => {
     console.error('Error inicializando base de datos:', err);
 });
@@ -125,48 +127,93 @@ let estado = {
     todosLosItems: []   // Todos los items escaneados
 };
 
-// Cargar estado guardado si existe
-const estadoPath = path.join(DATA_DIR, 'estado.json');
-if (fs.existsSync(estadoPath)) {
+// Cargar estado desde base de datos (se ejecuta después de que db esté lista)
+function cargarEstadoDesdeDB() {
     try {
-        const saved = JSON.parse(fs.readFileSync(estadoPath, 'utf8'));
+        const saved = database.cargarEstadoSesion();
+        if (saved) {
+            estado = {
+                sesionActiva: saved.sesionActiva || null,
+                maestro: saved.maestro || [],
+                stockTienda: saved.stockTienda || [],
+                escaneres: saved.escaneres || {},
+                zonas: saved.zonas || {},
+                todosLosItems: saved.todosLosItems || []
+            };
 
-        // SIEMPRE cargar el estado guardado (no solo si hay sesionActiva)
-        estado = {
-            sesionActiva: saved.sesionActiva || null,
-            maestro: saved.maestro || [],
-            stockTienda: saved.stockTienda || [],
-            escaneres: saved.escaneres || {},
-            zonas: saved.zonas || {},
-            todosLosItems: saved.todosLosItems || []
-        };
-
-        console.log('╔════════════════════════════════════════════════════════════╗');
-        console.log('║  ESTADO ANTERIOR CARGADO                                   ║');
-        console.log('╠════════════════════════════════════════════════════════════╣');
-        console.log(`║  Sesión activa: ${estado.sesionActiva ? estado.sesionActiva.nombre : 'Ninguna'}`);
-        console.log(`║  Maestro: ${estado.maestro.length} productos`);
-        console.log(`║  Stock Tienda: ${estado.stockTienda.length} items`);
-        console.log(`║  Zonas: ${Object.keys(estado.zonas).length}`);
-        console.log(`║  Items escaneados: ${estado.todosLosItems.length}`);
-        console.log('╚════════════════════════════════════════════════════════════╝');
+            console.log('╔════════════════════════════════════════════════════════════╗');
+            console.log('║  ESTADO ANTERIOR CARGADO DESDE DB                          ║');
+            console.log('╠════════════════════════════════════════════════════════════╣');
+            console.log(`║  Sesión activa: ${estado.sesionActiva ? estado.sesionActiva.nombre : 'Ninguna'}`);
+            console.log(`║  Maestro: ${estado.maestro.length} productos`);
+            console.log(`║  Stock Tienda: ${estado.stockTienda.length} items`);
+            console.log(`║  Zonas: ${Object.keys(estado.zonas).length}`);
+            console.log(`║  Items escaneados: ${estado.todosLosItems.length}`);
+            console.log('╚════════════════════════════════════════════════════════════╝');
+        } else {
+            console.log('Sin estado previo en DB, iniciando limpio');
+        }
     } catch (e) {
         console.log('No se pudo cargar estado anterior:', e.message);
     }
-} else {
-    console.log('Sin estado previo guardado, iniciando limpio');
 }
 
-// Guardar estado periódicamente (cada 3 segundos)
+// Guardar estado en base de datos
 function guardarEstado() {
     try {
-        fs.writeFileSync(estadoPath, JSON.stringify(estado, null, 2));
+        if (!database.isReady()) return;
+
+        // Crear copia limpia del estado (sin WebSockets)
+        const escaneresLimpios = {};
+        for (const [id, esc] of Object.entries(estado.escaneres)) {
+            escaneresLimpios[id] = {
+                id: esc.id,
+                nombre: esc.nombre,
+                nombreNormalizado: esc.nombreNormalizado,
+                zonaActual: esc.zonaActual,
+                items: esc.items || [],
+                conectado: false
+            };
+        }
+
+        const zonasLimpias = {};
+        for (const [id, zona] of Object.entries(estado.zonas)) {
+            zonasLimpias[id] = {
+                id: zona.id,
+                nombre: zona.nombre,
+                escaner: zona.escaner,
+                creadoPor: zona.creadoPor,
+                creadoPorNombre: zona.creadoPorNombre,
+                creadoPorNombreNormalizado: zona.creadoPorNombreNormalizado,
+                items: zona.items || [],
+                cerrada: zona.cerrada,
+                fechaInicio: zona.fechaInicio
+            };
+        }
+
+        const estadoParaGuardar = {
+            sesionActiva: estado.sesionActiva,
+            maestro: estado.maestro || [],
+            stockTienda: estado.stockTienda || [],
+            escaneres: escaneresLimpios,
+            zonas: zonasLimpias,
+            todosLosItems: estado.todosLosItems || []
+        };
+
+        const result = database.guardarEstadoSesion(estadoParaGuardar);
+
+        // Log solo si hay datos significativos
+        const tieneData = estado.todosLosItems.length || Object.keys(estado.zonas).length;
+        if (tieneData && result.ok) {
+            console.log(`[DB] Estado guardado: items=${estado.todosLosItems.length}, zonas=${Object.keys(estado.zonas).length}`);
+        }
     } catch (e) {
-        console.error('Error guardando estado:', e.message);
+        console.error('Error guardando estado en DB:', e.message);
     }
 }
 
-setInterval(guardarEstado, 3000);
+// Guardar estado cada 5 segundos
+setInterval(guardarEstado, 5000);
 
 // Guardar estado al cerrar
 process.on('exit', guardarEstado);
@@ -201,6 +248,16 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         clientes.delete(ws);
         console.log('Cliente desconectado. Total:', clientes.size);
+
+        // Marcar escáner como desconectado
+        if (ws.escanerId && estado.escaneres[ws.escanerId]) {
+            estado.escaneres[ws.escanerId].conectado = false;
+            console.log(`Escáner ${estado.escaneres[ws.escanerId].nombre} desconectado`);
+            broadcast({
+                tipo: 'escaner_desconectado',
+                data: { id: ws.escanerId, nombre: estado.escaneres[ws.escanerId].nombre }
+            });
+        }
     });
 });
 
@@ -380,9 +437,15 @@ function asignarZona(ws, data) {
 
     escaner.zonaActual = zonaId;
 
+    const zona = estado.zonas[zonaId];
+    const totalItemsZona = zona.items ? zona.items.reduce((sum, i) => sum + i.cantidad, 0) : 0;
     ws.send(JSON.stringify({
         tipo: 'zona_asignada',
-        data: { zonaId, zonaNombre: estado.zonas[zonaId].nombre }
+        data: {
+            zonaId,
+            zonaNombre: zona.nombre,
+            totalItems: totalItemsZona
+        }
     }));
 
     // Enviar lista de zonas personalizada a cada escáner
@@ -720,16 +783,31 @@ app.post('/api/sesion/nueva', (req, res) => {
             tienda_nombre: req.body.tienda_nombre || null,
             tienda_numero: req.body.tienda_numero || null
         },
-        maestro: estado.maestro, // Mantener maestro si ya estaba cargado
-        stockTienda: estado.stockTienda, // Mantener stock tienda si ya estaba cargado
-        escaneres: {},
-        zonas: {},
-        todosLosItems: []
+        maestro: estado.maestro,         // Mantener maestro
+        stockTienda: estado.stockTienda, // Mantener stock tienda
+        escaneres: estado.escaneres,     // Mantener escaneres conectados
+        zonas: {},                        // Limpiar zonas
+        todosLosItems: []                 // Limpiar items escaneados
     };
 
     guardarEstado();
     broadcast({ tipo: 'nueva_sesion', data: getResumen() });
     res.json({ ok: true, sesion: estado.sesionActiva });
+});
+
+// Obtener auditores conectados
+app.get('/api/auditores', (req, res) => {
+    const auditores = Object.values(estado.escaneres).map(esc => {
+        const zona = esc.zonaActual ? estado.zonas[esc.zonaActual] : null;
+        return {
+            id: esc.id,
+            nombre: esc.nombre,
+            conectado: esc.conectado || false,
+            zonaActual: zona ? zona.nombre : null,
+            itemsEscaneados: esc.items ? esc.items.reduce((sum, i) => sum + i.cantidad, 0) : 0
+        };
+    });
+    res.json(auditores);
 });
 
 // Finalizar sesión
@@ -1638,21 +1716,34 @@ app.get('/api/historico/:id/exportar', (req, res) => {
 function getLocalIP() {
     const interfaces = require('os').networkInterfaces();
     let hotspotIP = null;
-    let regularIP = null;
+    let wifiIP = null;
+    let anyLocalIP = null;
 
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                if (iface.address.startsWith('192.168.137.')) {
-                    hotspotIP = iface.address;
-                } else if (!regularIP) {
-                    regularIP = iface.address;
+                const addr = iface.address;
+
+                // Ignorar IPs de VPN (Tailscale usa 100.x.x.x)
+                if (addr.startsWith('100.')) continue;
+
+                // Prioridad 1: Hotspot de Windows
+                if (addr.startsWith('192.168.137.')) {
+                    hotspotIP = addr;
+                }
+                // Prioridad 2: Red local típica (WiFi/Ethernet)
+                else if (addr.startsWith('192.168.') || addr.startsWith('10.') || addr.startsWith('172.')) {
+                    if (!wifiIP) wifiIP = addr;
+                }
+                // Prioridad 3: Cualquier otra IP local
+                else if (!anyLocalIP) {
+                    anyLocalIP = addr;
                 }
             }
         }
     }
 
-    return hotspotIP || regularIP || 'localhost';
+    return hotspotIP || wifiIP || anyLocalIP || 'localhost';
 }
 
 // Variable global para almacenar el estado del servidor
@@ -1743,7 +1834,7 @@ async function startServerWithFallback() {
 }
 
 // Exportar estado del servidor
-module.exports = { serverStatus };
+module.exports = { serverStatus, guardarEstado };
 
 // Iniciar servidor
 startServerWithFallback();
