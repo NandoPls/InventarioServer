@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.*
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -239,6 +240,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             } else false
         }
 
+        // Manejar tecla Enter desde pistola Bluetooth
+        binding.etEAN.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_ENTER) {
+                val ean = binding.etEAN.text.toString().trim()
+                if (ean.isNotEmpty()) {
+                    sendScan(ean)
+                    binding.etEAN.text?.clear()
+                    // Mantener foco en el campo para siguiente escaneo
+                    binding.etEAN.requestFocus()
+                }
+                true
+            } else false
+        }
+
         // Cambiar zona
         binding.zonaBar.setOnClickListener {
             showScreen("zonas")
@@ -272,8 +287,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun loadSavedData() {
         serverIP = prefs.getString("serverIP", "") ?: ""
         userName = prefs.getString("userName", "") ?: ""
+        visitorId = prefs.getString("visitorId", "") ?: ""
         binding.etServerIP.setText(serverIP)
         binding.etUserName.setText(userName)
+
+        // Cargar zona guardada
+        val zonaId = prefs.getString("currentZonaId", "") ?: ""
+        val zonaNombre = prefs.getString("currentZonaNombre", "") ?: ""
+        val zonaItems = prefs.getInt("currentZonaItems", 0)
+        if (zonaId.isNotEmpty() && zonaNombre.isNotEmpty()) {
+            currentZona = Zona(id = zonaId, nombre = zonaNombre, items = zonaItems)
+            scanCount = zonaItems
+            Log.d("Offline", "Zona cargada: $zonaNombre")
+        }
+    }
+
+    private fun saveCurrentZona() {
+        if (currentZona != null) {
+            prefs.edit()
+                .putString("currentZonaId", currentZona!!.id)
+                .putString("currentZonaNombre", currentZona!!.nombre)
+                .putInt("currentZonaItems", scanCount)
+                .apply()
+            Log.d("Offline", "Zona guardada: ${currentZona!!.nombre}")
+        }
+    }
+
+    private fun clearSavedZona() {
+        prefs.edit()
+            .remove("currentZonaId")
+            .remove("currentZonaNombre")
+            .remove("currentZonaItems")
+            .apply()
     }
 
     private fun startConnection() {
@@ -305,15 +350,48 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     binding.etServerIP.setText(serverIP)
                     connectToServer(serverIP)
                 } else {
-                    binding.tvConnectionStatus.text = "Servidor no encontrado"
-                    binding.progressConnect.visibility = View.GONE
-                    binding.btnConnect.visibility = View.VISIBLE
+                    // No encontró servidor - ofrecer modo offline
+                    offerOfflineMode("Servidor no encontrado")
                 }
             } else {
-                binding.tvConnectionStatus.text = "No hay conexión WiFi"
-                binding.tvDeviceIP.text = ""
-                binding.progressConnect.visibility = View.GONE
-                binding.btnConnect.visibility = View.VISIBLE
+                // No hay WiFi - ofrecer modo offline
+                offerOfflineMode("No hay conexión WiFi")
+            }
+        }
+    }
+
+    private fun offerOfflineMode(reason: String) {
+        binding.progressConnect.visibility = View.GONE
+
+        // Si hay datos guardados, permitir modo offline
+        if (userName.isNotEmpty() && currentZona != null) {
+            isConnected = false
+            binding.tvConnectionStatus.text = "$reason - Modo offline"
+            binding.tvConnectionStatus.setTextColor(ContextCompat.getColor(this, R.color.warning))
+
+            // Mostrar botón para continuar offline
+            binding.btnConnect.text = "CONTINUAR OFFLINE"
+            binding.btnConnect.visibility = View.VISIBLE
+            binding.btnConnect.setOnClickListener {
+                // Ir directo al scanner con la zona guardada
+                binding.tvCurrentZona.text = currentZona!!.nombre
+                binding.tvScanCount.text = scanCount.toString()
+                binding.tvScannerUser.text = userName
+                showScreen("scanner")
+                startCamera()
+                updateConnectionIndicator()
+            }
+
+            Toast.makeText(this, "Puedes continuar escaneando offline", Toast.LENGTH_LONG).show()
+        } else {
+            binding.tvConnectionStatus.text = reason
+            binding.btnConnect.text = "CONECTAR"
+            binding.btnConnect.visibility = View.VISIBLE
+            binding.btnConnect.setOnClickListener {
+                val ip = binding.etServerIP.text.toString().trim()
+                if (ip.isNotEmpty()) {
+                    connectToServer(ip)
+                }
             }
         }
     }
@@ -390,8 +468,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             binding.tvConnectionStatus.text = "Conectado a $serverIP"
             binding.tvConnectionStatus.setTextColor(ContextCompat.getColor(this, R.color.success))
         } else {
-            binding.tvConnectionStatus.text = "Sin conexión - Modo offline (${offlineScans.size} pendientes)"
+            binding.tvConnectionStatus.text = "Sin conexión - Modo offline"
             binding.tvConnectionStatus.setTextColor(ContextCompat.getColor(this, R.color.warning))
+        }
+        updatePendingBanner()
+    }
+
+    private fun updatePendingBanner() {
+        if (offlineScans.isEmpty()) {
+            binding.pendingBanner.visibility = View.GONE
+        } else {
+            binding.pendingBanner.visibility = View.VISIBLE
+            val count = offlineScans.size
+            val text = if (count == 1) {
+                "⏳ 1 escaneo pendiente de sincronizar"
+            } else {
+                "⏳ $count escaneos pendientes de sincronizar"
+            }
+            binding.tvPendingCount.text = text
+            binding.progressSync.visibility = View.GONE
         }
     }
 
@@ -438,16 +533,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             timestamp = System.currentTimeMillis()
         ))
         saveOfflineScans()
-        updateConnectionIndicator()
 
         // Feedback visual offline
         scanCount++
         binding.tvScanCount.text = scanCount.toString()
+
+        // Guardar scanCount actualizado
+        saveCurrentZona()
+
         binding.tvLastEAN.text = ean
         binding.tvLastDesc.text = "Guardado offline - pendiente sincronizar"
         binding.tvLastDesc.setTextColor(ContextCompat.getColor(this, R.color.warning))
         binding.tvLastQty.text = "x1"
         binding.lastScanContainer.visibility = View.VISIBLE
+
+        // Actualizar banner de pendientes
+        updatePendingBanner()
+
         vibrate()
         playWarningSound()
     }
@@ -456,6 +558,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (offlineScans.isEmpty() || !isConnected) return
 
         Log.d("Offline", "Sincronizando ${offlineScans.size} escaneos pendientes")
+
+        // Mostrar indicador de sincronización
+        binding.pendingBanner.visibility = View.VISIBLE
+        binding.tvPendingCount.text = "⌛ Sincronizando ${offlineScans.size} escaneos..."
+        binding.progressSync.visibility = View.VISIBLE
 
         val scansToSync = offlineScans.toList()
         offlineScans.clear()
@@ -472,7 +579,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             webSocket?.send(msg)
         }
 
-        Toast.makeText(this, "Sincronizados ${scansToSync.size} escaneos", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "✓ Sincronizados ${scansToSync.size} escaneos", Toast.LENGTH_SHORT).show()
+
+        // Ocultar banner después de sincronizar
+        binding.progressSync.visibility = View.GONE
+        binding.pendingBanner.visibility = View.GONE
         updateConnectionIndicator()
     }
 
@@ -496,6 +607,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     // Registro exitoso, pedir zonas
                     val data = json.getAsJsonObject("data")
                     visitorId = data?.get("id")?.asString ?: ""
+                    // Guardar visitorId para modo offline
+                    prefs.edit().putString("visitorId", visitorId).apply()
                     Log.d("WS", "Registrado con ID: $visitorId")
                     requestZonas()
                 }
@@ -641,15 +754,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         scanCount = zona.items
         binding.tvScanCount.text = scanCount.toString()
 
-        val msg = JsonObject().apply {
-            addProperty("tipo", "asignar_zona")
-            add("data", JsonObject().apply {
-                addProperty("escanerId", visitorId)
-                addProperty("zonaId", zona.id)
-            })
+        // Guardar zona para modo offline
+        saveCurrentZona()
+
+        // Si hay conexión, notificar al servidor
+        if (isConnected && visitorId.isNotEmpty()) {
+            val msg = JsonObject().apply {
+                addProperty("tipo", "asignar_zona")
+                add("data", JsonObject().apply {
+                    addProperty("escanerId", visitorId)
+                    addProperty("zonaId", zona.id)
+                })
+            }
+            Log.d("WS", "Seleccionando zona: ${zona.nombre} con escanerId: $visitorId")
+            webSocket?.send(msg)
+        } else {
+            // Modo offline - ir directo al scanner
+            Log.d("Offline", "Zona seleccionada offline: ${zona.nombre}")
+            showScreen("scanner")
+            startCamera()
         }
-        Log.d("WS", "Seleccionando zona: ${zona.nombre} con escanerId: $visitorId")
-        webSocket?.send(msg)
     }
 
     private fun sendScan(ean: String) {
@@ -694,6 +818,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         if (screen == "scanner") {
             binding.tvScannerUser.text = userName
+            // Mostrar banner de pendientes si los hay
+            updatePendingBanner()
         }
     }
 

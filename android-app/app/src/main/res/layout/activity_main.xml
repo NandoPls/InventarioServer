@@ -253,6 +253,35 @@
 
         </LinearLayout>
 
+        <!-- Banner de escaneos pendientes -->
+        <LinearLayout
+            android:id="@+id/pendingBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="10dp"
+            android:gravity="center_vertical"
+            android:background="@color/warning"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvPendingCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⏳ 0 escaneos pendientes de sincronizar"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+            <ProgressBar
+                android:id="@+id/progressSync"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
         <!-- Input EAN -->
         <LinearLayout
             android:layout_width="match_parent"
