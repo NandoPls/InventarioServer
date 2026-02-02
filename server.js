@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const os = require('os');
+const dgram = require('dgram');  // Para UDP discovery
 
 // Base de datos SQLite (se inicializa de forma asíncrona)
 const database = require('./database');
@@ -743,6 +744,55 @@ function getResumen() {
 // ============================================
 
 // Obtener estado/resumen
+// Endpoint rápido para discovery de la app Android
+app.get('/api/ping', (req, res) => {
+    res.json({
+        ok: true,
+        type: 'INVENTARIO_SERVER',
+        name: 'Inventario QLQ',
+        port: PORT
+    });
+});
+
+// ============================================
+// SESIÓN GUI (para compartir entre Electron y Dashboard)
+// ============================================
+let guiSession = null;
+
+app.post('/api/gui-session', (req, res) => {
+    const { usuario, timestamp } = req.body;
+    console.log('[GUI-SESSION] POST recibido:', usuario ? usuario.nombre : 'sin usuario');
+    if (usuario) {
+        guiSession = { usuario, timestamp: timestamp || Date.now() };
+        console.log('[GUI-SESSION] Sesión guardada:', guiSession.usuario.nombre);
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: 'Usuario requerido' });
+    }
+});
+
+app.get('/api/gui-session', (req, res) => {
+    console.log('[GUI-SESSION] GET - sesión actual:', guiSession ? guiSession.usuario.nombre : 'ninguna');
+    if (guiSession) {
+        // Verificar si no expiró (7 días)
+        const diasExpiracion = 7;
+        const now = Date.now();
+        if (now - guiSession.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
+            res.json(guiSession);
+        } else {
+            guiSession = null;
+            res.json(null);
+        }
+    } else {
+        res.json(null);
+    }
+});
+
+app.delete('/api/gui-session', (req, res) => {
+    guiSession = null;
+    res.json({ ok: true });
+});
+
 app.get('/api/estado', (req, res) => {
     res.json(getResumen());
 });
@@ -1804,8 +1854,12 @@ async function startServerWithFallback() {
                 console.log(`║  En red:     http://${ip}${portDisplay}                      ║`);
                 console.log('╠════════════════════════════════════════════════════════════╣');
                 console.log('║  Los escáneres deben estar en la misma red WiFi            ║');
+                console.log('║  La app Android encontrará el servidor automáticamente     ║');
                 console.log('╚════════════════════════════════════════════════════════════╝');
                 console.log('');
+
+                // Iniciar servidor UDP para discovery automático
+                iniciarUDPDiscovery(ip, port);
             });
 
             return; // Éxito, salir
@@ -1831,6 +1885,54 @@ async function startServerWithFallback() {
     console.error('║  Ejecuta como Administrador o cierra otras apps.           ║');
     console.error('╚════════════════════════════════════════════════════════════╝');
     console.error('');
+}
+
+// ============================================
+// UDP DISCOVERY - Para que la app encuentre el servidor automáticamente
+// ============================================
+const UDP_DISCOVERY_PORT = 41234;
+const DISCOVERY_MESSAGE = 'INVENTARIO_DISCOVERY';
+
+function iniciarUDPDiscovery(serverIP, serverPort) {
+    try {
+        const udpServer = dgram.createSocket('udp4');
+
+        udpServer.on('message', (msg, rinfo) => {
+            const message = msg.toString().trim();
+
+            if (message === DISCOVERY_MESSAGE) {
+                console.log(`[Discovery] Solicitud desde ${rinfo.address}:${rinfo.port}`);
+
+                // Responder con la información del servidor
+                const response = JSON.stringify({
+                    type: 'INVENTARIO_SERVER',
+                    ip: serverIP,
+                    port: serverPort,
+                    name: 'Inventario QLQ Server'
+                });
+
+                udpServer.send(response, rinfo.port, rinfo.address, (err) => {
+                    if (err) {
+                        console.log('[Discovery] Error enviando respuesta:', err.message);
+                    } else {
+                        console.log(`[Discovery] Respondido a ${rinfo.address}`);
+                    }
+                });
+            }
+        });
+
+        udpServer.on('error', (err) => {
+            console.log('[Discovery] Error UDP:', err.message);
+            udpServer.close();
+        });
+
+        udpServer.bind(UDP_DISCOVERY_PORT, '0.0.0.0', () => {
+            console.log(`[Discovery] Escuchando en UDP puerto ${UDP_DISCOVERY_PORT}`);
+        });
+
+    } catch (err) {
+        console.log('[Discovery] No se pudo iniciar:', err.message);
+    }
 }
 
 // Exportar estado del servidor

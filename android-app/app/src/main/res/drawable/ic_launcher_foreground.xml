@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Barcode icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,30 L30,78 L36,78 L36,30 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,30 L40,78 L44,78 L44,30 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,30 L48,78 L56,78 L56,30 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,30 L60,78 L64,78 L64,30 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68,30 L68,78 L72,78 L72,30 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,30 L76,78 L78,78 L78,30 Z"/>
+</vector>

@@ -1878,33 +1878,48 @@
         let eliminandoHistoricoId = null;
         let editandoUsuarioId = null;
 
-        // Cargar sesión desde GUI al iniciar
-        function cargarSesionGUI() {
-            // Intentar leer sesión del GUI (Electron)
-            const sessionStr = localStorage.getItem('inventario_session');
-            if (sessionStr) {
-                try {
-                    const session = JSON.parse(sessionStr);
-                    const diasExpiracion = 7;
-                    const now = Date.now();
-                    if (now - session.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
-                        usuarioActual = session.usuario;
-                    }
-                } catch (e) {
-                    // Sesión inválida
+        // Cargar sesión desde servidor
+        async function cargarSesionGUI() {
+            try {
+                const res = await fetch('/api/gui-session');
+                const session = await res.json();
+                if (session && session.usuario) {
+                    usuarioActual = session.usuario;
+                }
+            } catch (e) {
+                // Error de conexión, intentar localStorage como fallback
+                const sessionStr = localStorage.getItem('inventario_session');
+                if (sessionStr) {
+                    try {
+                        const session = JSON.parse(sessionStr);
+                        const diasExpiracion = 7;
+                        const now = Date.now();
+                        if (now - session.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
+                            usuarioActual = session.usuario;
+                        }
+                    } catch (e) {}
                 }
             }
         }
 
-        // Cargar al inicio
-        cargarSesionGUI();
+        // Cargar al inicio (con retry porque el servidor puede tardar)
+        async function inicializarSesion() {
+            await cargarSesionGUI();
+            // Si no hay sesión, reintentar en 2 segundos (por si el servidor aún no sincronizó)
+            if (!usuarioActual) {
+                setTimeout(async () => {
+                    await cargarSesionGUI();
+                }, 2000);
+            }
+        }
+        inicializarSesion();
 
         // Mostrar modal de histórico
         async function mostrarModalHistorico() {
             document.getElementById('modalHistorico').classList.add('active');
 
             // Recargar sesión por si cambió
-            cargarSesionGUI();
+            await cargarSesionGUI();
 
             const esAdmin = usuarioActual && usuarioActual.rol === 'admin';
 

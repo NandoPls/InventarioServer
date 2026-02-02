@@ -927,10 +927,17 @@
                     btnText.textContent = 'Acceso concedido';
 
                     // Guardar sesión con info del usuario
-                    localStorage.setItem('inventario_session', JSON.stringify({
-                        timestamp: Date.now(),
-                        usuario: data.usuario
-                    }));
+                    const sessionData = { timestamp: Date.now(), usuario: data.usuario };
+                    localStorage.setItem('inventario_session', JSON.stringify(sessionData));
+
+                    // Sincronizar sesión con el servidor (para el dashboard)
+                    if (serverPort) {
+                        fetch(apiUrl('/api/gui-session'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(sessionData)
+                        }).catch(() => {});
+                    }
 
                     setTimeout(() => {
                         document.getElementById('loginOverlay').classList.add('hidden');
@@ -946,10 +953,10 @@
                     usuarioActual = { username: user, nombre: 'Andrés Pachacama', rol: 'admin' };
                     btnText.textContent = 'Acceso concedido (offline)';
 
-                    localStorage.setItem('inventario_session', JSON.stringify({
-                        timestamp: Date.now(),
-                        usuario: usuarioActual
-                    }));
+                    const sessionData = { timestamp: Date.now(), usuario: usuarioActual };
+                    localStorage.setItem('inventario_session', JSON.stringify(sessionData));
+
+                    // La sesión se sincronizará cuando el servidor arranque (en updateUI)
 
                     setTimeout(() => {
                         document.getElementById('loginOverlay').classList.add('hidden');
@@ -1001,6 +1008,8 @@
                     if (now - session.timestamp < diasExpiracion * 24 * 60 * 60 * 1000) {
                         usuarioActual = session.usuario;
                         document.getElementById('loginOverlay').classList.add('hidden');
+                        actualizarUIUsuario();
+                        // La sesión se sincronizará cuando el servidor arranque (en updateUI)
                     } else {
                         localStorage.removeItem('inventario_session');
                     }
@@ -1016,6 +1025,12 @@
         let serverPort = null;
         let dashboardUrl = '';
         let scannerUrl = '';
+
+        // Helper para construir URLs de API (necesario porque el GUI se carga como file://)
+        function apiUrl(endpoint) {
+            if (!serverPort) return null;
+            return `http://localhost:${serverPort}${endpoint}`;
+        }
 
         const statusIndicator = document.getElementById('statusIndicator');
         const statusText = document.getElementById('statusText');
@@ -1076,6 +1091,31 @@
             btnIcon.style.display = 'block';
         }
 
+        // Sincronizar sesión con el servidor cuando esté corriendo
+        function sincronizarSesionConServidor() {
+            if (!usuarioActual || !serverPort) return;
+
+            const sessionData = {
+                timestamp: Date.now(),
+                usuario: usuarioActual
+            };
+
+            // Pequeño delay para asegurar que el servidor esté listo
+            setTimeout(() => {
+                fetch(apiUrl('/api/gui-session'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sessionData)
+                }).then(res => res.json()).then(data => {
+                    console.log('Sesión sincronizada con servidor:', data);
+                }).catch(e => {
+                    console.log('Error sincronizando sesión:', e);
+                    // Reintentar en 2 segundos
+                    setTimeout(() => sincronizarSesionConServidor(), 2000);
+                });
+            }, 500);
+        }
+
         function updateUI() {
             if (serverRunning) {
                 statusIndicator.classList.add('running');
@@ -1092,6 +1132,9 @@
                 connectionInfo.classList.add('visible');
 
                 generateQR(scannerUrl);
+
+                // Sincronizar sesión cuando el servidor arranca
+                sincronizarSesionConServidor();
             } else {
                 statusIndicator.classList.remove('running');
                 statusText.textContent = 'Detenido';
@@ -1338,12 +1381,15 @@
             }
         });
 
-        // Mostrar usuario logueado
+        // Mostrar usuario logueado (clickeable para cerrar sesión)
         function actualizarUIUsuario() {
             const usuarioSpan = document.getElementById('usuarioLogueado');
             if (usuarioActual && usuarioSpan) {
                 const rolColor = usuarioActual.rol === 'admin' ? '#8b5cf6' : '#3b82f6';
                 usuarioSpan.innerHTML = `${usuarioActual.nombre} <span style="background:${rolColor};color:white;padding:1px 6px;border-radius:3px;font-size:9px;margin-left:4px;">${usuarioActual.rol}</span>`;
+                usuarioSpan.style.cursor = 'pointer';
+                usuarioSpan.title = 'Click para cerrar sesión';
+                usuarioSpan.onclick = cerrarSesionGUI;
             }
         }
 
@@ -1351,6 +1397,10 @@
         function cerrarSesionGUI() {
             if (confirm('¿Cerrar sesión?')) {
                 localStorage.removeItem('inventario_session');
+                // Borrar sesión del servidor
+                if (serverPort) {
+                    fetch(apiUrl('/api/gui-session'), { method: 'DELETE' }).catch(() => {});
+                }
                 usuarioActual = null;
                 document.getElementById('loginOverlay').classList.remove('hidden');
                 document.getElementById('loginUser').value = '';
