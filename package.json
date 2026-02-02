@@ -22,7 +22,7 @@
   "build": {
     "appId": "com.nandopls.inventario",
     "productName": "Inventario Server",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "InventarioServer-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
