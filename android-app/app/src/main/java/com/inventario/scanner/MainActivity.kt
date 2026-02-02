@@ -66,6 +66,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // Sonidos
     private var toneGenerator: ToneGenerator? = null
+    private var toneGeneratorLoud: ToneGenerator? = null  // Para sonido fuerte de advertencia
+
+    // Conexión y offline
+    private var isConnected: Boolean = false
+    private var offlineScans: MutableList<OfflineScan> = mutableListOf()
+    private var connectionCheckJob: Job? = null
 
     private val prefs by lazy { getSharedPreferences("inventario", Context.MODE_PRIVATE) }
 
@@ -74,18 +80,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Mantener pantalla encendida mientras la app está activa
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Inicializar sensor de movimiento
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-        // Inicializar generador de tonos
+        // Inicializar generadores de tonos
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            toneGeneratorLoud = ToneGenerator(AudioManager.STREAM_ALARM, 100)  // Más fuerte para advertencias
         } catch (e: Exception) {
             Log.e("Sound", "Error inicializando ToneGenerator", e)
         }
+
+        // Cargar escaneos offline pendientes
+        loadOfflineScans()
 
         setupListeners()
         loadSavedData()
@@ -171,10 +184,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // Sonido de advertencia (código NO encontrado en maestra)
+    // Sonido de advertencia (código NO encontrado en maestra) - MÁS FUERTE
     private fun playWarningSound() {
         try {
-            toneGenerator?.startTone(ToneGenerator.TONE_PROP_NACK, 300)
+            // Usar el tono de alarma más fuerte y repetir
+            toneGeneratorLoud?.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 400)
         } catch (e: Exception) {
             Log.e("Sound", "Error reproduciendo sonido", e)
         }
@@ -312,8 +326,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             onMessage = { handleMessage(it) },
             onConnected = {
                 runOnUiThread {
+                    isConnected = true
                     binding.tvConnectionStatus.text = "Conectado a $serverIP"
                     binding.progressConnect.visibility = View.GONE
+
+                    // Iniciar verificación de conexión periódica
+                    startConnectionCheck()
+
+                    // Sincronizar escaneos pendientes
+                    syncOfflineScans()
 
                     if (userName.isNotEmpty()) {
                         registerUser()
@@ -324,12 +345,135 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             },
             onDisconnected = {
                 runOnUiThread {
+                    isConnected = false
                     Toast.makeText(this, "Desconectado del servidor", Toast.LENGTH_SHORT).show()
+                    updateConnectionIndicator()
                 }
             }
         )
 
         webSocket?.connect(serverIP)
+    }
+
+    private fun startConnectionCheck() {
+        connectionCheckJob?.cancel()
+        connectionCheckJob = CoroutineScope(Dispatchers.Main).launch {
+            while (isActive) {
+                delay(5000)  // Verificar cada 5 segundos
+                checkConnection()
+            }
+        }
+    }
+
+    private fun checkConnection() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val connected = NetworkUtils.testConnection(serverIP)
+            withContext(Dispatchers.Main) {
+                if (connected != isConnected) {
+                    isConnected = connected
+                    updateConnectionIndicator()
+
+                    if (connected) {
+                        // Reconectado - sincronizar
+                        Toast.makeText(this@MainActivity, "Reconectado al servidor", Toast.LENGTH_SHORT).show()
+                        syncOfflineScans()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Sin conexión - Modo offline", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateConnectionIndicator() {
+        if (isConnected) {
+            binding.tvConnectionStatus.text = "Conectado a $serverIP"
+            binding.tvConnectionStatus.setTextColor(ContextCompat.getColor(this, R.color.success))
+        } else {
+            binding.tvConnectionStatus.text = "Sin conexión - Modo offline (${offlineScans.size} pendientes)"
+            binding.tvConnectionStatus.setTextColor(ContextCompat.getColor(this, R.color.warning))
+        }
+    }
+
+    private fun loadOfflineScans() {
+        val json = prefs.getString("offlineScans", "[]") ?: "[]"
+        try {
+            val array = com.google.gson.JsonParser.parseString(json).asJsonArray
+            offlineScans.clear()
+            array.forEach { element ->
+                val obj = element.asJsonObject
+                offlineScans.add(OfflineScan(
+                    ean = obj.get("ean").asString,
+                    visitorId = obj.get("visitorId").asString,
+                    zonaId = obj.get("zonaId").asString,
+                    timestamp = obj.get("timestamp").asLong
+                ))
+            }
+            Log.d("Offline", "Cargados ${offlineScans.size} escaneos pendientes")
+        } catch (e: Exception) {
+            Log.e("Offline", "Error cargando escaneos offline", e)
+        }
+    }
+
+    private fun saveOfflineScans() {
+        val array = com.google.gson.JsonArray()
+        offlineScans.forEach { scan ->
+            val obj = JsonObject().apply {
+                addProperty("ean", scan.ean)
+                addProperty("visitorId", scan.visitorId)
+                addProperty("zonaId", scan.zonaId)
+                addProperty("timestamp", scan.timestamp)
+            }
+            array.add(obj)
+        }
+        prefs.edit().putString("offlineScans", array.toString()).apply()
+    }
+
+    private fun addOfflineScan(ean: String) {
+        if (currentZona == null) return
+        offlineScans.add(OfflineScan(
+            ean = ean,
+            visitorId = visitorId,
+            zonaId = currentZona!!.id,
+            timestamp = System.currentTimeMillis()
+        ))
+        saveOfflineScans()
+        updateConnectionIndicator()
+
+        // Feedback visual offline
+        scanCount++
+        binding.tvScanCount.text = scanCount.toString()
+        binding.tvLastEAN.text = ean
+        binding.tvLastDesc.text = "Guardado offline - pendiente sincronizar"
+        binding.tvLastDesc.setTextColor(ContextCompat.getColor(this, R.color.warning))
+        binding.tvLastQty.text = "x1"
+        binding.lastScanContainer.visibility = View.VISIBLE
+        vibrate()
+        playWarningSound()
+    }
+
+    private fun syncOfflineScans() {
+        if (offlineScans.isEmpty() || !isConnected) return
+
+        Log.d("Offline", "Sincronizando ${offlineScans.size} escaneos pendientes")
+
+        val scansToSync = offlineScans.toList()
+        offlineScans.clear()
+        saveOfflineScans()
+
+        scansToSync.forEach { scan ->
+            val msg = JsonObject().apply {
+                addProperty("tipo", "escanear")
+                add("data", JsonObject().apply {
+                    addProperty("escanerId", scan.visitorId)
+                    addProperty("ean", scan.ean)
+                })
+            }
+            webSocket?.send(msg)
+        }
+
+        Toast.makeText(this, "Sincronizados ${scansToSync.size} escaneos", Toast.LENGTH_SHORT).show()
+        updateConnectionIndicator()
     }
 
     private fun handleMessage(json: JsonObject) {
@@ -514,6 +658,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
 
+        // Si no hay conexión, guardar offline
+        if (!isConnected) {
+            Log.d("Offline", "Sin conexión, guardando offline: $ean")
+            addOfflineScan(ean)
+            return
+        }
+
         val msg = JsonObject().apply {
             addProperty("tipo", "escanear")
             add("data", JsonObject().apply {
@@ -619,6 +770,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         webSocket?.disconnect()
         toneGenerator?.release()
         toneGenerator = null
+        toneGeneratorLoud?.release()
+        toneGeneratorLoud = null
+        connectionCheckJob?.cancel()
     }
 }
 
@@ -626,4 +780,11 @@ data class Zona(
     val id: String,
     val nombre: String,
     val items: Int
+)
+
+data class OfflineScan(
+    val ean: String,
+    val visitorId: String,
+    val zonaId: String,
+    val timestamp: Long
 )

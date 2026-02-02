@@ -861,6 +861,8 @@
             switch(msg.tipo) {
                 case 'registrado':
                     escanerId = msg.data.id;
+                    // Pedir zonas filtradas del usuario después de registrarse
+                    ws.send(JSON.stringify({tipo: 'obtener_zonas'}));
                     break;
 
                 case 'zona_asignada':
@@ -896,9 +898,14 @@
                     break;
 
                 case 'lista_zonas':
-                case 'estado_inicial':
+                    // Zonas filtradas del usuario actual
                     zonasDisponibles = msg.data.zonas || [];
                     actualizarListaZonas();
+                    break;
+
+                case 'estado_inicial':
+                    // Ignorar zonas del estado_inicial (contiene todas las zonas)
+                    // Las zonas se piden con obtener_zonas después de registrarse
                     break;
 
                 case 'error':
