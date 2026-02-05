@@ -418,10 +418,6 @@
                     <div class="comp-value" id="compContados">0</div>
                     <div class="comp-label">Items Contados</div>
                 </div>
-                <div class="comp-stat">
-                    <div class="comp-value" id="compDiferencia">0</div>
-                    <div class="comp-label" id="compDiferenciaLabel">Por Contar</div>
-                </div>
                 <div class="comp-stat faltante">
                     <div class="comp-value" id="compFaltantes">0</div>
                     <div class="comp-label">Faltantes</div>
@@ -1795,22 +1791,6 @@
             document.getElementById('compContados').textContent = data.totalEscaneado || 0;
             document.getElementById('compFaltantes').textContent = data.totalFaltantes || 0;
             document.getElementById('compSobrantes').textContent = data.totalSobrantes || 0;
-
-            // Diferencia entre esperados y contados
-            const diferencia = (data.totalEsperado || 0) - (data.totalEscaneado || 0);
-            const difEl = document.getElementById('compDiferencia');
-            const difLabelEl = document.getElementById('compDiferenciaLabel');
-            difEl.textContent = Math.abs(diferencia);
-            if (diferencia > 0) {
-                difEl.style.color = '#f59e0b';
-                difLabelEl.textContent = 'Por Contar';
-            } else if (diferencia < 0) {
-                difEl.style.color = '#22c55e';
-                difLabelEl.textContent = 'De Más';
-            } else {
-                difEl.style.color = '#22c55e';
-                difLabelEl.textContent = 'Completo';
-            }
 
             // Costos
             document.getElementById('costoFaltantes').textContent = formatearMoneda(data.costoFaltante || 0);
