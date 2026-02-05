@@ -10,20 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-          - os: macos-latest
-            platform: mac
-          - os: ubuntu-latest
-            platform: linux
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
@@ -40,80 +28,53 @@ jobs:
       - name: Generar iconos
         run: node scripts/ensure-icons.js
 
-      - name: Build para ${{ matrix.platform }}
-        run: npx electron-builder --${{ matrix.platform }} --publish never
-
-      - name: Subir artefactos Windows
-        if: matrix.platform == 'win'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: |
-            dist/*.exe
-            dist/*.blockmap
-            dist/latest.yml
-          if-no-files-found: ignore
-
-      - name: Subir artefactos macOS
-        if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: |
-            dist/*.dmg
-            dist/*.blockmap
-            dist/latest-mac.yml
-          if-no-files-found: ignore
-
-      - name: Subir artefactos Linux
-        if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-build
-          path: |
-            dist/*.AppImage
-            dist/latest-linux.yml
-          if-no-files-found: ignore
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-
-    steps:
-      - name: Descargar Windows build
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: dist
-        continue-on-error: true
-
-      - name: Descargar macOS build
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-build
-          path: dist
-        continue-on-error: true
-
-      - name: Descargar Linux build
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-build
-          path: dist
-        continue-on-error: true
-
-      - name: Listar archivos
-        run: ls -la dist/ || echo "No hay archivos"
-
-      - name: Crear Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
-          draft: false
-          fail_on_unmatched_files: false
-          make_latest: true
+      - name: Build y Publish Windows
+        run: npx electron-builder --win --publish always
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar iconos
+        run: node scripts/ensure-icons.js
+
+      - name: Build y Publish macOS
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar iconos
+        run: node scripts/ensure-icons.js
+
+      - name: Build y Publish Linux
+        run: npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
