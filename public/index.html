@@ -577,10 +577,13 @@
 
     <!-- Modal Detalle Faltantes -->
     <div class="modal" id="modalFaltantes">
-        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto;">
             <h3>Items Faltantes</h3>
-            <p style="color:#666;margin-bottom:15px;">Productos que no han sido escaneados</p>
-            <div id="listaFaltantes" style="max-height: 400px; overflow-y: auto;"></div>
+            <p style="color:#666;margin-bottom:10px;">Productos que no han sido escaneados</p>
+            <div style="margin-bottom:15px;">
+                <input type="text" id="buscarFaltantes" placeholder="Buscar por EAN o descripción..." oninput="filtrarFaltantes()" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;">
+            </div>
+            <div id="listaFaltantes" style="max-height: 450px; overflow-y: auto;"></div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
             </div>
@@ -589,10 +592,13 @@
 
     <!-- Modal Detalle Sobrantes -->
     <div class="modal" id="modalSobrantes">
-        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto;">
             <h3>Items Sobrantes</h3>
-            <p style="color:#666;margin-bottom:15px;">Productos escaneados de más o no esperados</p>
-            <div id="listaSobrantes" style="max-height: 400px; overflow-y: auto;"></div>
+            <p style="color:#666;margin-bottom:10px;">Productos escaneados de más o no esperados</p>
+            <div style="margin-bottom:15px;">
+                <input type="text" id="buscarSobrantes" placeholder="Buscar por EAN o descripción..." oninput="filtrarSobrantes()" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px;">
+            </div>
+            <div id="listaSobrantes" style="max-height: 450px; overflow-y: auto;"></div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cerrarModales()">Cerrar</button>
             </div>
@@ -604,8 +610,11 @@
         <div class="modal-content">
             <h3>Editar Item</h3>
             <div class="form-group">
-                <label>EAN</label>
-                <input type="text" id="editEan" readonly style="background:#f5f5f5;">
+                <label>EAN / Código de Barras</label>
+                <input type="text" id="editEan" oninput="buscarEnMaestroEditar()">
+            </div>
+            <div id="infoMaestroEditar" style="padding:10px; background:#f0fdf4; border-radius:6px; font-size:13px; display:none; margin-bottom:15px;">
+                <span style="color:#22c55e;">✓ Encontrado en maestro</span>
             </div>
             <div class="form-group">
                 <label>Descripción</label>
@@ -1406,14 +1415,61 @@
             document.getElementById('editDesc').value = item.descripcion;
             document.getElementById('editCantidad').value = item.cantidad;
             document.getElementById('editZona').value = item.zonaId;
+            document.getElementById('infoMaestroEditar').style.display = 'none';
             document.getElementById('modalEditar').classList.add('active');
+        }
+
+        // Buscar en maestro al editar EAN (igual que en agregar item)
+        let buscarTimeoutEditar = null;
+        async function buscarEnMaestroEditar() {
+            const ean = document.getElementById('editEan').value.trim();
+            const infoEl = document.getElementById('infoMaestroEditar');
+
+            if (ean.length < 3) {
+                infoEl.style.display = 'none';
+                return;
+            }
+
+            // Debounce para evitar muchas peticiones
+            if (buscarTimeoutEditar) clearTimeout(buscarTimeoutEditar);
+
+            // Solo buscar cuando el EAN tenga longitud razonable (8+ dígitos)
+            if (ean.length >= 8) {
+                buscarTimeoutEditar = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`/api/maestro/buscar/${encodeURIComponent(ean)}`);
+                        const data = await res.json();
+
+                        if (data.encontrado && data.producto) {
+                            document.getElementById('editDesc').value = data.producto.descripcion;
+                            infoEl.innerHTML = '<span style="color:#22c55e;">✓ Encontrado en maestro - Datos actualizados</span>';
+                            infoEl.style.background = '#f0fdf4';
+                            infoEl.style.display = 'block';
+                        } else {
+                            infoEl.innerHTML = '<span style="color:#f59e0b;">⚠ No encontrado en maestro</span>';
+                            infoEl.style.background = '#fefce8';
+                            infoEl.style.display = 'block';
+                        }
+                    } catch (e) {
+                        console.error('Error buscando en maestro:', e);
+                    }
+                }, 300);
+            }
         }
 
         async function guardarEdicion() {
             if (!itemEditando) return;
 
+            const nuevoEan = document.getElementById('editEan').value.trim();
+
+            if (!nuevoEan) {
+                alert('El EAN no puede estar vacío');
+                return;
+            }
+
             const data = {
                 id: itemEditando.id,
+                ean: nuevoEan,
                 descripcion: document.getElementById('editDesc').value,
                 cantidad: parseInt(document.getElementById('editCantidad').value),
                 zonaId: document.getElementById('editZona').value
@@ -1772,11 +1828,23 @@
             return '$' + valor.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
 
+        // Observaciones para faltantes y sobrantes (se cargan del servidor)
+        let observacionesFaltantes = {};
+        let observacionesSobrantes = {};
+
         function verDetalleFaltantes() {
             if (!comparacionData || !comparacionData.faltantes) return;
 
+            // Cargar observaciones guardadas
+            observacionesFaltantes = comparacionData.observacionesFaltantes || {};
+
+            document.getElementById('buscarFaltantes').value = '';
+            renderFaltantes(comparacionData.faltantes);
+            document.getElementById('modalFaltantes').classList.add('active');
+        }
+
+        function renderFaltantes(items) {
             const lista = document.getElementById('listaFaltantes');
-            const items = comparacionData.faltantes;
 
             if (items.length === 0) {
                 lista.innerHTML = '<div class="empty">Sin faltantes</div>';
@@ -1790,7 +1858,7 @@
                                 <th>Esperado</th>
                                 <th>Contado</th>
                                 <th>Faltan</th>
-                                <th>Costo</th>
+                                <th style="min-width:150px;">Observación</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1801,22 +1869,61 @@
                                     <td style="text-align:center;">${i.cantidadEsperada}</td>
                                     <td style="text-align:center;">${i.cantidadEscaneada}</td>
                                     <td style="text-align:center; color:#ef4444; font-weight:600;">${i.diferencia}</td>
-                                    <td style="color:#ef4444;">${formatearMoneda(i.costoTotal)}</td>
+                                    <td>
+                                        <input type="text"
+                                            value="${observacionesFaltantes[i.ean] || ''}"
+                                            placeholder="Agregar observación..."
+                                            onchange="guardarObservacionFaltante('${i.ean}', this.value)"
+                                            style="width:100%;padding:4px 8px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;">
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 `;
             }
+        }
 
-            document.getElementById('modalFaltantes').classList.add('active');
+        function filtrarFaltantes() {
+            const buscar = document.getElementById('buscarFaltantes').value.toLowerCase();
+            let items = comparacionData.faltantes || [];
+
+            if (buscar) {
+                items = items.filter(i =>
+                    i.ean.toLowerCase().includes(buscar) ||
+                    i.descripcion.toLowerCase().includes(buscar)
+                );
+            }
+
+            renderFaltantes(items);
+        }
+
+        async function guardarObservacionFaltante(ean, observacion) {
+            observacionesFaltantes[ean] = observacion;
+            try {
+                await fetch('/api/observacion/faltante', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ean, observacion })
+                });
+            } catch (e) {
+                console.error('Error guardando observación:', e);
+            }
         }
 
         function verDetalleSobrantes() {
             if (!comparacionData || !comparacionData.sobrantes) return;
 
+            // Cargar observaciones guardadas
+            observacionesSobrantes = comparacionData.observacionesSobrantes || {};
+
+            document.getElementById('buscarSobrantes').value = '';
+            renderSobrantes(comparacionData.sobrantes);
+            document.getElementById('modalSobrantes').classList.add('active');
+        }
+
+        function renderSobrantes(items) {
             const lista = document.getElementById('listaSobrantes');
-            const items = comparacionData.sobrantes;
 
             if (items.length === 0) {
                 lista.innerHTML = '<div class="empty">Sin sobrantes</div>';
@@ -1830,7 +1937,7 @@
                                 <th>Esperado</th>
                                 <th>Contado</th>
                                 <th>Sobran</th>
-                                <th>Costo</th>
+                                <th style="min-width:150px;">Observación</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1841,15 +1948,46 @@
                                     <td style="text-align:center;">${i.cantidadEsperada}</td>
                                     <td style="text-align:center;">${i.cantidadEscaneada}</td>
                                     <td style="text-align:center; color:#22c55e; font-weight:600;">+${i.diferencia}</td>
-                                    <td style="color:#22c55e;">${formatearMoneda(i.costoTotal)}</td>
+                                    <td>
+                                        <input type="text"
+                                            value="${observacionesSobrantes[i.ean] || ''}"
+                                            placeholder="Agregar observación..."
+                                            onchange="guardarObservacionSobrante('${i.ean}', this.value)"
+                                            style="width:100%;padding:4px 8px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;">
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 `;
             }
+        }
 
-            document.getElementById('modalSobrantes').classList.add('active');
+        function filtrarSobrantes() {
+            const buscar = document.getElementById('buscarSobrantes').value.toLowerCase();
+            let items = comparacionData.sobrantes || [];
+
+            if (buscar) {
+                items = items.filter(i =>
+                    i.ean.toLowerCase().includes(buscar) ||
+                    i.descripcion.toLowerCase().includes(buscar)
+                );
+            }
+
+            renderSobrantes(items);
+        }
+
+        async function guardarObservacionSobrante(ean, observacion) {
+            observacionesSobrantes[ean] = observacion;
+            try {
+                await fetch('/api/observacion/sobrante', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ean, observacion })
+                });
+            } catch (e) {
+                console.error('Error guardando observación:', e);
+            }
         }
 
         // Cerrar modales con Escape
@@ -2115,7 +2253,7 @@
                             <summary style="cursor:pointer;font-weight:600;color:#ef4444;margin-bottom:10px;">Ver Faltantes (${h.detalle_faltantes.length})</summary>
                             <div style="max-height:200px;overflow-y:auto;">
                                 <table class="items-table" style="font-size:12px;">
-                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Faltan</th></tr></thead>
+                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Faltan</th><th>Observación</th></tr></thead>
                                     <tbody>
                                         ${h.detalle_faltantes.slice(0, 50).map(f => `
                                             <tr>
@@ -2124,6 +2262,7 @@
                                                 <td>${f.cantidadEsperada}</td>
                                                 <td>${f.cantidadEscaneada}</td>
                                                 <td style="color:#ef4444;font-weight:600;">${f.diferencia}</td>
+                                                <td style="color:#666;font-size:11px;">${f.observacion || '-'}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -2137,7 +2276,7 @@
                             <summary style="cursor:pointer;font-weight:600;color:#22c55e;margin-bottom:10px;">Ver Sobrantes (${h.detalle_sobrantes.length})</summary>
                             <div style="max-height:200px;overflow-y:auto;">
                                 <table class="items-table" style="font-size:12px;">
-                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Sobran</th></tr></thead>
+                                    <thead><tr><th>EAN</th><th>Descripción</th><th>Esperado</th><th>Contado</th><th>Sobran</th><th>Observación</th></tr></thead>
                                     <tbody>
                                         ${h.detalle_sobrantes.slice(0, 50).map(s => `
                                             <tr>
@@ -2146,6 +2285,7 @@
                                                 <td>${s.cantidadEsperada}</td>
                                                 <td>${s.cantidadEscaneada}</td>
                                                 <td style="color:#22c55e;font-weight:600;">+${s.diferencia}</td>
+                                                <td style="color:#666;font-size:11px;">${s.observacion || '-'}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>

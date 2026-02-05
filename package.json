@@ -1,6 +1,6 @@
 {
   "name": "inventario-server",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Sistema de inventario con escáneres móviles",
   "main": "main.js",
   "author": "NandoPls",

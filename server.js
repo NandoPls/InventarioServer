@@ -125,7 +125,9 @@ let estado = {
     stockTienda: [],    // Stock esperado: { ean, codigo, descripcion, cantidad, costo }
     escaneres: {},      // { id: { nombre, zonaActual, items: [], conectado } }
     zonas: {},          // { zonaId: { nombre, escaner, items: [], cerrada } }
-    todosLosItems: []   // Todos los items escaneados
+    todosLosItems: [],  // Todos los items escaneados
+    observacionesFaltantes: {},  // { ean: observacion }
+    observacionesSobrantes: {}   // { ean: observacion }
 };
 
 // Cargar estado desde base de datos (se ejecuta después de que db esté lista)
@@ -139,7 +141,9 @@ function cargarEstadoDesdeDB() {
                 stockTienda: saved.stockTienda || [],
                 escaneres: saved.escaneres || {},
                 zonas: saved.zonas || {},
-                todosLosItems: saved.todosLosItems || []
+                todosLosItems: saved.todosLosItems || [],
+                observacionesFaltantes: saved.observacionesFaltantes || {},
+                observacionesSobrantes: saved.observacionesSobrantes || {}
             };
 
             console.log('╔════════════════════════════════════════════════════════════╗');
@@ -198,7 +202,9 @@ function guardarEstado() {
             stockTienda: estado.stockTienda || [],
             escaneres: escaneresLimpios,
             zonas: zonasLimpias,
-            todosLosItems: estado.todosLosItems || []
+            todosLosItems: estado.todosLosItems || [],
+            observacionesFaltantes: estado.observacionesFaltantes || {},
+            observacionesSobrantes: estado.observacionesSobrantes || {}
         };
 
         const result = database.guardarEstadoSesion(estadoParaGuardar);
@@ -597,6 +603,8 @@ function getComparacion() {
     let costoSobrante = 0;
     let totalEsperado = 0;
     let totalEscaneado = 0;
+    let sumaFaltantes = 0;  // Suma de cantidades faltantes
+    let sumaSobrantes = 0;  // Suma de cantidades sobrantes
 
     // Revisar items del stock esperado
     Object.keys(stockMap).forEach(ean => {
@@ -623,6 +631,7 @@ function getComparacion() {
                 costoTotal: faltante * costoUnit
             });
             costoFaltante += faltante * costoUnit;
+            sumaFaltantes += faltante;  // Sumar cantidad faltante
         } else if (diferencia > 0) {
             // Sobrante
             const costoUnit = esperado.costo || 0;
@@ -637,6 +646,7 @@ function getComparacion() {
                 costoTotal: diferencia * costoUnit
             });
             costoSobrante += diferencia * costoUnit;
+            sumaSobrantes += diferencia;  // Sumar cantidad sobrante
         }
     });
 
@@ -657,6 +667,7 @@ function getComparacion() {
                 costoTotal: escaneado.cantidadEscaneada * costoUnit
             });
             costoSobrante += escaneado.cantidadEscaneada * costoUnit;
+            sumaSobrantes += escaneado.cantidadEscaneada;  // Sumar cantidad sobrante
         }
     });
 
@@ -681,13 +692,17 @@ function getComparacion() {
         progreso: Math.min(progreso, 999), // Cap at 999%
         faltantes,
         sobrantes,
-        totalFaltantes: faltantes.length,
-        totalSobrantes: sobrantes.length,
+        totalFaltantes: sumaFaltantes,      // Suma de cantidades faltantes
+        totalSobrantes: sumaSobrantes,      // Suma de cantidades sobrantes
+        eansUniFaltantes: faltantes.length, // Cantidad de EANs únicos faltantes
+        eansUniSobrantes: sobrantes.length, // Cantidad de EANs únicos sobrantes
         costoFaltante,
         costoSobrante,
         diferenciaCosto: costoSobrante - costoFaltante,
         eansEsperados: Object.keys(stockMap).length,
-        eansEscaneados: Object.keys(escaneadoMap).length
+        eansEscaneados: Object.keys(escaneadoMap).length,
+        observacionesFaltantes: estado.observacionesFaltantes || {},
+        observacionesSobrantes: estado.observacionesSobrantes || {}
     };
 }
 
@@ -837,7 +852,9 @@ app.post('/api/sesion/nueva', (req, res) => {
         stockTienda: estado.stockTienda, // Mantener stock tienda
         escaneres: estado.escaneres,     // Mantener escaneres conectados
         zonas: {},                        // Limpiar zonas
-        todosLosItems: []                 // Limpiar items escaneados
+        todosLosItems: [],               // Limpiar items escaneados
+        observacionesFaltantes: {},      // Limpiar observaciones de faltantes
+        observacionesSobrantes: {}       // Limpiar observaciones de sobrantes
     };
 
     guardarEstado();
@@ -971,6 +988,34 @@ app.get('/api/comparacion', (req, res) => {
     res.json(getComparacion());
 });
 
+// Guardar observación de faltante
+app.post('/api/observacion/faltante', (req, res) => {
+    const { ean, observacion } = req.body;
+    if (!ean) {
+        return res.status(400).json({ error: 'EAN requerido' });
+    }
+    if (!estado.observacionesFaltantes) {
+        estado.observacionesFaltantes = {};
+    }
+    estado.observacionesFaltantes[ean] = observacion || '';
+    guardarEstado();
+    res.json({ ok: true });
+});
+
+// Guardar observación de sobrante
+app.post('/api/observacion/sobrante', (req, res) => {
+    const { ean, observacion } = req.body;
+    if (!ean) {
+        return res.status(400).json({ error: 'EAN requerido' });
+    }
+    if (!estado.observacionesSobrantes) {
+        estado.observacionesSobrantes = {};
+    }
+    estado.observacionesSobrantes[ean] = observacion || '';
+    guardarEstado();
+    res.json({ ok: true });
+});
+
 // Exportar a Excel
 app.get('/api/exportar', (req, res) => {
     const wb = XLSX.utils.book_new();
@@ -1001,6 +1046,7 @@ app.get('/api/exportar', (req, res) => {
 
     // HOJA 2: Faltantes (items en stock que no se escanearon o se escanearon menos)
     if (comparacion.faltantes && comparacion.faltantes.length > 0) {
+        const observacionesFalt = estado.observacionesFaltantes || {};
         const faltantesData = comparacion.faltantes.map(f => ({
             'EAN': f.ean,
             'Código': f.codigo || '',
@@ -1009,18 +1055,20 @@ app.get('/api/exportar', (req, res) => {
             'Cantidad Escaneada': f.cantidadEscaneada,
             'Faltante': f.diferencia,
             'Costo Unitario': f.costoUnitario || 0,
-            'Costo Total Faltante': f.costoTotal || 0
+            'Costo Total Faltante': f.costoTotal || 0,
+            'Observación': observacionesFalt[f.ean] || ''
         }));
         const wsFaltantes = XLSX.utils.json_to_sheet(faltantesData);
         wsFaltantes['!cols'] = [
             { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
-            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }
+            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 30 }
         ];
         XLSX.utils.book_append_sheet(wb, wsFaltantes, 'Faltantes');
     }
 
     // HOJA 3: Sobrantes (items escaneados de más o no esperados)
     if (comparacion.sobrantes && comparacion.sobrantes.length > 0) {
+        const observacionesSob = estado.observacionesSobrantes || {};
         const sobrantesData = comparacion.sobrantes.map(s => ({
             'EAN': s.ean,
             'Código': s.codigo || '',
@@ -1029,12 +1077,13 @@ app.get('/api/exportar', (req, res) => {
             'Cantidad Escaneada': s.cantidadEscaneada,
             'Sobrante': s.diferencia,
             'Costo Unitario': s.costoUnitario || 0,
-            'Costo Total Sobrante': s.costoTotal || 0
+            'Costo Total Sobrante': s.costoTotal || 0,
+            'Observación': observacionesSob[s.ean] || ''
         }));
         const wsSobrantes = XLSX.utils.json_to_sheet(sobrantesData);
         wsSobrantes['!cols'] = [
             { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 14 },
-            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }
+            { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 30 }
         ];
         XLSX.utils.book_append_sheet(wb, wsSobrantes, 'Sobrantes');
     }
@@ -1045,10 +1094,12 @@ app.get('/api/exportar', (req, res) => {
         { 'Concepto': 'Total Items Escaneados', 'Valor': comparacion.totalEscaneado || 0 },
         { 'Concepto': 'Progreso (%)', 'Valor': comparacion.progreso || 0 },
         { 'Concepto': '', 'Valor': '' },
-        { 'Concepto': 'Total Faltantes (cantidad)', 'Valor': comparacion.faltantes?.length || 0 },
+        { 'Concepto': 'Total Faltantes (unidades)', 'Valor': comparacion.totalFaltantes || 0 },
+        { 'Concepto': 'EANs Faltantes (únicos)', 'Valor': comparacion.eansUniFaltantes || comparacion.faltantes?.length || 0 },
         { 'Concepto': 'Costo Total Faltantes', 'Valor': comparacion.costoFaltante || 0 },
         { 'Concepto': '', 'Valor': '' },
-        { 'Concepto': 'Total Sobrantes (cantidad)', 'Valor': comparacion.sobrantes?.length || 0 },
+        { 'Concepto': 'Total Sobrantes (unidades)', 'Valor': comparacion.totalSobrantes || 0 },
+        { 'Concepto': 'EANs Sobrantes (únicos)', 'Valor': comparacion.eansUniSobrantes || comparacion.sobrantes?.length || 0 },
         { 'Concepto': 'Costo Total Sobrantes', 'Valor': comparacion.costoSobrante || 0 },
         { 'Concepto': '', 'Valor': '' },
         { 'Concepto': 'Diferencia Neta', 'Valor': comparacion.diferenciaCosto || 0 }
@@ -1073,7 +1124,7 @@ app.get('/api/exportar', (req, res) => {
 
 // Editar item
 app.post('/api/item/editar', (req, res) => {
-    const { id, descripcion, cantidad, zonaId } = req.body;
+    const { id, ean, descripcion, cantidad, zonaId } = req.body;
 
     // Buscar item en todosLosItems
     const itemIndex = estado.todosLosItems.findIndex(i => i.id === id);
@@ -1082,6 +1133,7 @@ app.post('/api/item/editar', (req, res) => {
     }
 
     const item = estado.todosLosItems[itemIndex];
+    const eanAnterior = item.ean;
 
     // Si la cantidad es 0 o menor, eliminar el item
     if (cantidad !== undefined && cantidad <= 0) {
@@ -1105,6 +1157,33 @@ app.post('/api/item/editar', (req, res) => {
         return res.json({ ok: true, eliminado: true });
     }
 
+    // Actualizar EAN si se envió
+    if (ean !== undefined && ean.trim() !== '') {
+        const eanNuevo = ean.trim();
+
+        if (eanNuevo !== item.ean) {
+            console.log(`[Editar Item] Cambiando EAN de ${item.ean} a ${eanNuevo}`);
+        }
+
+        // Buscar en maestro para actualizar código y existeEnMaestro
+        const producto = estado.maestro.find(p => p.ean === eanNuevo);
+
+        // Actualizar siempre el EAN y datos relacionados
+        item.ean = eanNuevo;
+        item.codigo = producto?.codigo || item.codigo || '';
+        item.existeEnMaestro = !!producto;
+    }
+
+    // Actualizar descripción (si se envió y el EAN no cambió o el usuario la modificó manualmente)
+    if (descripcion !== undefined && descripcion.trim() !== '') {
+        item.descripcion = descripcion.trim();
+    }
+
+    // Actualizar cantidad
+    if (cantidad !== undefined) {
+        item.cantidad = cantidad;
+    }
+
     // Si cambió de zona, mover el item
     if (zonaId && zonaId !== item.zonaId) {
         // Remover de zona anterior
@@ -1119,25 +1198,29 @@ app.post('/api/item/editar', (req, res) => {
         item.zonaNombre = estado.zonas[zonaId]?.nombre || zonaId;
     }
 
-    // Actualizar datos
-    if (descripcion !== undefined) item.descripcion = descripcion;
-    if (cantidad !== undefined) item.cantidad = cantidad;
-
-    // También actualizar en la zona
+    // También actualizar en la zona (sincronizar todos los campos)
     if (estado.zonas[item.zonaId]) {
         const zonaItem = estado.zonas[item.zonaId].items.find(i => i.id === id);
         if (zonaItem) {
-            if (descripcion !== undefined) zonaItem.descripcion = descripcion;
-            if (cantidad !== undefined) zonaItem.cantidad = cantidad;
+            // Sincronizar todos los campos del item
+            zonaItem.ean = item.ean;
+            zonaItem.codigo = item.codigo;
+            zonaItem.descripcion = item.descripcion;
+            zonaItem.cantidad = item.cantidad;
+            zonaItem.existeEnMaestro = item.existeEnMaestro;
         }
     }
 
     // También actualizar en escaneres (si existe)
     Object.values(estado.escaneres).forEach(escaner => {
-        const escanerItem = escaner.items.find(i => i.id === id || i.ean === item.ean);
+        const escanerItem = escaner.items.find(i => i.id === id || i.ean === eanAnterior);
         if (escanerItem) {
-            if (descripcion !== undefined) escanerItem.descripcion = descripcion;
-            if (cantidad !== undefined) escanerItem.cantidad = cantidad;
+            // Sincronizar todos los campos del item
+            escanerItem.ean = item.ean;
+            escanerItem.codigo = item.codigo;
+            escanerItem.descripcion = item.descripcion;
+            escanerItem.cantidad = item.cantidad;
+            escanerItem.existeEnMaestro = item.existeEnMaestro;
         }
     });
 
@@ -1246,7 +1329,9 @@ app.post('/api/limpiar', (req, res) => {
         stockTienda: [],
         escaneres: {},
         zonas: {},
-        todosLosItems: []
+        todosLosItems: [],
+        observacionesFaltantes: {},
+        observacionesSobrantes: {}
     };
     guardarEstado();
     broadcast({ tipo: 'limpiado', data: getResumen() });
@@ -1586,6 +1671,20 @@ app.post('/api/historico', (req, res) => {
         ultimoEscaneo: item.ultimoEscaneo
     }));
 
+    // Incluir observaciones en los detalles de faltantes y sobrantes
+    const observacionesFalt = estado.observacionesFaltantes || {};
+    const observacionesSob = estado.observacionesSobrantes || {};
+
+    const faltantesConObservacion = (comparacion.faltantes || []).map(f => ({
+        ...f,
+        observacion: observacionesFalt[f.ean] || ''
+    }));
+
+    const sobrantesConObservacion = (comparacion.sobrantes || []).map(s => ({
+        ...s,
+        observacion: observacionesSob[s.ean] || ''
+    }));
+
     const datos = {
         fecha: new Date().toISOString(),
         tienda_id: tienda_id || null,
@@ -1598,10 +1697,10 @@ app.post('/api/historico', (req, res) => {
         total_zonas: resumen.totalZonas,
         total_faltantes: comparacion.totalFaltantes || 0,
         costo_faltantes: comparacion.costoFaltante || 0,
-        detalle_faltantes: comparacion.faltantes || [],
+        detalle_faltantes: faltantesConObservacion,
         total_sobrantes: comparacion.totalSobrantes || 0,
         costo_sobrantes: comparacion.costoSobrante || 0,
-        detalle_sobrantes: comparacion.sobrantes || [],
+        detalle_sobrantes: sobrantesConObservacion,
         costo_general: comparacion.diferenciaCosto || 0,
         creado_por,
         notas,
@@ -1690,12 +1789,13 @@ app.get('/api/historico/:id/exportar', (req, res) => {
             'Cantidad Escaneada': f.cantidadEscaneada,
             'Diferencia': f.diferencia,
             'Costo Unitario': f.costoUnitario || 0,
-            'Costo Total': f.costoTotal || 0
+            'Costo Total': f.costoTotal || 0,
+            'Observación': f.observacion || ''
         }));
         const wsFaltantes = XLSX.utils.json_to_sheet(faltantesData);
         wsFaltantes['!cols'] = [
             { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 15 },
-            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }
+            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 30 }
         ];
         XLSX.utils.book_append_sheet(wb, wsFaltantes, 'Faltantes');
     }
@@ -1711,12 +1811,13 @@ app.get('/api/historico/:id/exportar', (req, res) => {
             'Cantidad Escaneada': s.cantidadEscaneada,
             'Diferencia': s.diferencia,
             'Costo Unitario': s.costoUnitario || 0,
-            'Costo Total': s.costoTotal || 0
+            'Costo Total': s.costoTotal || 0,
+            'Observación': s.observacion || ''
         }));
         const wsSobrantes = XLSX.utils.json_to_sheet(sobrantesData);
         wsSobrantes['!cols'] = [
             { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 15 },
-            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }
+            { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 30 }
         ];
         XLSX.utils.book_append_sheet(wb, wsSobrantes, 'Sobrantes');
     }
