@@ -377,10 +377,6 @@
                 <div class="stat-label">Total Items</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="eansUnicos">0</div>
-                <div class="stat-label">EANs Únicos</div>
-            </div>
-            <div class="stat-card">
                 <div class="stat-value" id="zonasActivas">0</div>
                 <div class="stat-label">Zonas</div>
             </div>
@@ -1019,7 +1015,6 @@
         function actualizarDashboard(data) {
             datosActuales = data; // Guardar estado actual
             document.getElementById('totalItems').textContent = data.totalItems || 0;
-            document.getElementById('eansUnicos').textContent = data.eansUnicos || 0;
             document.getElementById('zonasActivas').textContent = data.zonas?.length || 0;
             document.getElementById('escaneres').textContent = data.auditoresUnicos || 0;
             document.getElementById('sinMaestro').textContent = data.sinMaestro || 0;
@@ -1784,7 +1779,7 @@
             // Progreso
             const porcentaje = data.progreso || 0;
             document.getElementById('progresoFill').style.width = Math.min(porcentaje, 100) + '%';
-            document.getElementById('progresoTexto').textContent = porcentaje + '%';
+            document.getElementById('progresoTexto').textContent = porcentaje.toFixed(1).replace('.', ',') + '%';
 
             // Stats
             document.getElementById('compEsperados').textContent = data.totalEsperado || 0;
@@ -1812,11 +1807,152 @@
         let observacionesFaltantes = {};
         let observacionesSobrantes = {};
 
+        // Variables para ordenamiento
+        let ordenFaltantes = { columna: null, ascendente: true };
+        let ordenSobrantes = { columna: null, ascendente: true };
+
+        function ordenarFaltantes(columna) {
+            // Si es la misma columna, invertir orden
+            if (ordenFaltantes.columna === columna) {
+                ordenFaltantes.ascendente = !ordenFaltantes.ascendente;
+            } else {
+                ordenFaltantes.columna = columna;
+                ordenFaltantes.ascendente = true;
+            }
+
+            const items = [...(comparacionData.faltantes || [])];
+            items.sort((a, b) => {
+                let valA, valB;
+
+                switch(columna) {
+                    case 'ean':
+                        valA = a.ean;
+                        valB = b.ean;
+                        break;
+                    case 'descripcion':
+                        valA = (a.descripcion || '').toLowerCase();
+                        valB = (b.descripcion || '').toLowerCase();
+                        break;
+                    case 'esperado':
+                        valA = a.cantidadEsperada || 0;
+                        valB = b.cantidadEsperada || 0;
+                        break;
+                    case 'contado':
+                        valA = a.cantidadEscaneada || 0;
+                        valB = b.cantidadEscaneada || 0;
+                        break;
+                    case 'faltan':
+                        valA = a.diferencia || 0;
+                        valB = b.diferencia || 0;
+                        break;
+                    case 'observacion':
+                        valA = (observacionesFaltantes[a.ean] || '').trim();
+                        valB = (observacionesFaltantes[b.ean] || '').trim();
+
+                        const tieneTextoA = valA.length > 0;
+                        const tieneTextoB = valB.length > 0;
+
+                        // Separar: con texto vs sin texto
+                        if (tieneTextoA && !tieneTextoB) {
+                            return ordenFaltantes.ascendente ? -1 : 1;  // Con texto primero si ascendente
+                        }
+                        if (!tieneTextoA && tieneTextoB) {
+                            return ordenFaltantes.ascendente ? 1 : -1;  // Sin texto después si ascendente
+                        }
+
+                        // Si ambos tienen texto o ambos vacíos, ordenar alfabéticamente
+                        if (tieneTextoA && tieneTextoB) {
+                            const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
+                            return ordenFaltantes.ascendente ? cmp : -cmp;
+                        }
+
+                        return 0; // Ambos vacíos, mantener orden
+                        break;
+                }
+
+                if (valA < valB) return ordenFaltantes.ascendente ? -1 : 1;
+                if (valA > valB) return ordenFaltantes.ascendente ? 1 : -1;
+                return 0;
+            });
+
+            renderFaltantes(items);
+        }
+
+        function ordenarSobrantes(columna) {
+            // Si es la misma columna, invertir orden
+            if (ordenSobrantes.columna === columna) {
+                ordenSobrantes.ascendente = !ordenSobrantes.ascendente;
+            } else {
+                ordenSobrantes.columna = columna;
+                ordenSobrantes.ascendente = true;
+            }
+
+            const items = [...(comparacionData.sobrantes || [])];
+            items.sort((a, b) => {
+                let valA, valB;
+
+                switch(columna) {
+                    case 'ean':
+                        valA = a.ean;
+                        valB = b.ean;
+                        break;
+                    case 'descripcion':
+                        valA = (a.descripcion || '').toLowerCase();
+                        valB = (b.descripcion || '').toLowerCase();
+                        break;
+                    case 'esperado':
+                        valA = a.cantidadEsperada || 0;
+                        valB = b.cantidadEsperada || 0;
+                        break;
+                    case 'contado':
+                        valA = a.cantidadEscaneada || 0;
+                        valB = b.cantidadEscaneada || 0;
+                        break;
+                    case 'sobran':
+                        valA = a.diferencia || 0;
+                        valB = b.diferencia || 0;
+                        break;
+                    case 'observacion':
+                        valA = (observacionesSobrantes[a.ean] || '').trim();
+                        valB = (observacionesSobrantes[b.ean] || '').trim();
+
+                        const tieneTextoA = valA.length > 0;
+                        const tieneTextoB = valB.length > 0;
+
+                        // Separar: con texto vs sin texto
+                        if (tieneTextoA && !tieneTextoB) {
+                            return ordenSobrantes.ascendente ? -1 : 1;  // Con texto primero si ascendente
+                        }
+                        if (!tieneTextoA && tieneTextoB) {
+                            return ordenSobrantes.ascendente ? 1 : -1;  // Sin texto después si ascendente
+                        }
+
+                        // Si ambos tienen texto o ambos vacíos, ordenar alfabéticamente
+                        if (tieneTextoA && tieneTextoB) {
+                            const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
+                            return ordenSobrantes.ascendente ? cmp : -cmp;
+                        }
+
+                        return 0; // Ambos vacíos, mantener orden
+                        break;
+                }
+
+                if (valA < valB) return ordenSobrantes.ascendente ? -1 : 1;
+                if (valA > valB) return ordenSobrantes.ascendente ? 1 : -1;
+                return 0;
+            });
+
+            renderSobrantes(items);
+        }
+
         function verDetalleFaltantes() {
             if (!comparacionData || !comparacionData.faltantes) return;
 
             // Cargar observaciones guardadas
             observacionesFaltantes = comparacionData.observacionesFaltantes || {};
+
+            // Reset ordenamiento
+            ordenFaltantes = { columna: null, ascendente: true };
 
             document.getElementById('buscarFaltantes').value = '';
             renderFaltantes(comparacionData.faltantes);
@@ -1829,16 +1965,21 @@
             if (items.length === 0) {
                 lista.innerHTML = '<div class="empty">Sin faltantes</div>';
             } else {
+                const getSortIcon = (col) => {
+                    if (ordenFaltantes.columna !== col) return '';
+                    return ordenFaltantes.ascendente ? ' ▲' : ' ▼';
+                };
+
                 lista.innerHTML = `
                     <table class="items-table" style="font-size:0.8rem;">
                         <thead>
                             <tr>
-                                <th>EAN</th>
-                                <th>Descripción</th>
-                                <th>Esperado</th>
-                                <th>Contado</th>
-                                <th>Faltan</th>
-                                <th style="min-width:150px;">Observación</th>
+                                <th onclick="ordenarFaltantes('ean')" style="cursor:pointer;user-select:none;">EAN${getSortIcon('ean')}</th>
+                                <th onclick="ordenarFaltantes('descripcion')" style="cursor:pointer;user-select:none;">Descripción${getSortIcon('descripcion')}</th>
+                                <th onclick="ordenarFaltantes('esperado')" style="cursor:pointer;user-select:none;">Esperado${getSortIcon('esperado')}</th>
+                                <th onclick="ordenarFaltantes('contado')" style="cursor:pointer;user-select:none;">Contado${getSortIcon('contado')}</th>
+                                <th onclick="ordenarFaltantes('faltan')" style="cursor:pointer;user-select:none;">Faltan${getSortIcon('faltan')}</th>
+                                <th onclick="ordenarFaltantes('observacion')" style="min-width:150px;cursor:pointer;user-select:none;">Observación${getSortIcon('observacion')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1853,7 +1994,7 @@
                                         <input type="text"
                                             value="${observacionesFaltantes[i.ean] || ''}"
                                             placeholder="Agregar observación..."
-                                            onchange="guardarObservacionFaltante('${i.ean}', this.value)"
+                                            oninput="guardarObservacionFaltante('${i.ean}', this.value)"
                                             style="width:100%;padding:4px 8px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;">
                                     </td>
                                 </tr>
@@ -1897,6 +2038,9 @@
             // Cargar observaciones guardadas
             observacionesSobrantes = comparacionData.observacionesSobrantes || {};
 
+            // Reset ordenamiento
+            ordenSobrantes = { columna: null, ascendente: true };
+
             document.getElementById('buscarSobrantes').value = '';
             renderSobrantes(comparacionData.sobrantes);
             document.getElementById('modalSobrantes').classList.add('active');
@@ -1908,16 +2052,21 @@
             if (items.length === 0) {
                 lista.innerHTML = '<div class="empty">Sin sobrantes</div>';
             } else {
+                const getSortIcon = (col) => {
+                    if (ordenSobrantes.columna !== col) return '';
+                    return ordenSobrantes.ascendente ? ' ▲' : ' ▼';
+                };
+
                 lista.innerHTML = `
                     <table class="items-table" style="font-size:0.8rem;">
                         <thead>
                             <tr>
-                                <th>EAN</th>
-                                <th>Descripción</th>
-                                <th>Esperado</th>
-                                <th>Contado</th>
-                                <th>Sobran</th>
-                                <th style="min-width:150px;">Observación</th>
+                                <th onclick="ordenarSobrantes('ean')" style="cursor:pointer;user-select:none;">EAN${getSortIcon('ean')}</th>
+                                <th onclick="ordenarSobrantes('descripcion')" style="cursor:pointer;user-select:none;">Descripción${getSortIcon('descripcion')}</th>
+                                <th onclick="ordenarSobrantes('esperado')" style="cursor:pointer;user-select:none;">Esperado${getSortIcon('esperado')}</th>
+                                <th onclick="ordenarSobrantes('contado')" style="cursor:pointer;user-select:none;">Contado${getSortIcon('contado')}</th>
+                                <th onclick="ordenarSobrantes('sobran')" style="cursor:pointer;user-select:none;">Sobran${getSortIcon('sobran')}</th>
+                                <th onclick="ordenarSobrantes('observacion')" style="min-width:150px;cursor:pointer;user-select:none;">Observación${getSortIcon('observacion')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1932,7 +2081,7 @@
                                         <input type="text"
                                             value="${observacionesSobrantes[i.ean] || ''}"
                                             placeholder="Agregar observación..."
-                                            onchange="guardarObservacionSobrante('${i.ean}', this.value)"
+                                            oninput="guardarObservacionSobrante('${i.ean}', this.value)"
                                             style="width:100%;padding:4px 8px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;">
                                     </td>
                                 </tr>

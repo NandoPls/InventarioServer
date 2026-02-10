@@ -903,6 +903,23 @@
                     actualizarListaZonas();
                     break;
 
+                case 'zona_eliminada':
+                    // Zona eliminada desde el dashboard
+                    const zonaEliminadaId = msg.data.zonaId;
+                    zonasDisponibles = zonasDisponibles.filter(z => z.id !== zonaEliminadaId);
+                    actualizarListaZonas();
+
+                    // Si el usuario estaba en esa zona, limpiar y volver a zonas
+                    if (zonaActual === zonaEliminadaId) {
+                        alert('La zona fue eliminada desde el dashboard');
+                        zonaActual = null;
+                        zonaNombre = null;
+                        totalZona = 0;
+                        historial = [];
+                        volverAZonas();
+                    }
+                    break;
+
                 case 'estado_inicial':
                     // Ignorar zonas del estado_inicial (contiene todas las zonas)
                     // Las zonas se piden con obtener_zonas después de registrarse

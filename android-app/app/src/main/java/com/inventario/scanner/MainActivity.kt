@@ -680,6 +680,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     vibrate()
                 }
 
+                "zona_eliminada" -> {
+                    val data = json.getAsJsonObject("data")
+                    val zonaId = data?.get("zonaId")?.asString ?: return@runOnUiThread
+
+                    // Eliminar zona de la lista local
+                    zonas.removeAll { it.id == zonaId }
+                    updateZonasList()
+
+                    // Si el usuario estaba en esa zona, limpiar y volver a zonas
+                    if (currentZona?.id == zonaId) {
+                        currentZona = null
+                        scanCount = 0
+                        clearSavedZona()
+                        Toast.makeText(this, "La zona fue eliminada desde el dashboard", Toast.LENGTH_LONG).show()
+                        showScreen("zonas")
+                    }
+
+                    Log.d("WS", "Zona eliminada: $zonaId")
+                }
+
                 "error" -> {
                     val error = json.get("mensaje")?.asString ?: "Error desconocido"
                     Toast.makeText(this, error, Toast.LENGTH_SHORT).show()

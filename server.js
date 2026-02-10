@@ -677,7 +677,7 @@ function getComparacion() {
     });
 
     // Calcular progreso
-    const progreso = totalEsperado > 0 ? Math.round((totalEscaneado / totalEsperado) * 100) : 0;
+    const progreso = totalEsperado > 0 ? (totalEscaneado / totalEsperado) * 100 : 0;
 
     // Ordenar por costo total
     faltantes.sort((a, b) => b.costoTotal - a.costoTotal);
